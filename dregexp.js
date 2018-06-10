@@ -44,6 +44,8 @@ function DRegExp(grammarRules) {
     }
 }
 
+DRegExp.prototype.constructor = DRegExp;
+
 DRegExp.prototype.tokenize = function(inputString) {
     // Expand char patterns
     for (let nodeType in this.nodePatterns) {
