@@ -28,24 +28,24 @@ function DRegExp(grammarRules) {
             this.nodeTypeIds[rule.nodetype] = nodeTypeId++;
         }
 
-        if (rule.charpattern.length > 0 && rule.nodepattern.length > 0) {
-            console.error(rule.nodetype + ': only one of charpattern or nodepattern must be defined, not both');
+        if (rule.tokenizepattern.length > 0 && rule.parsepattern.length > 0) {
+            console.error(rule.nodetype + ': only one of tokenizepattern or parsepattern must be defined, not both');
             return null;
-        } else if (rule.charpattern.length > 0) {
-            this.tokenizePatterns[rule.nodetype] = rule.charpattern;
-        } else if (rule.nodepattern.length > 0) {
-            if (rule.nodepattern.match(/\\/)) {
-                console.error(rule.nodetype + ': nodepattern must not contain backslashes (\\)');
+        } else if (rule.tokenizepattern.length > 0) {
+            this.tokenizePatterns[rule.nodetype] = rule.tokenizepattern;
+        } else if (rule.parsepattern.length > 0) {
+            if (rule.parsepattern.match(/\\/)) {
+                console.error(rule.nodetype + ': parsepattern must not contain backslashes (\\)');
                 return null;
             }
-            this.parsePatterns[rule.nodetype] = rule.nodepattern;
+            this.parsePatterns[rule.nodetype] = rule.parsepattern;
         } else {
-            console.error(rule.nodetype + ': charpattern or nodepattern must be defined');
+            console.error(rule.nodetype + ': tokenizepattern or parsepattern must be defined');
             return null;
         }
     }
 
-    // Expand char patterns in node patterns
+    // Expand tokenize patterns in parse patterns
     for (let nodeType in this.parsePatterns) {
         let matchNodeTypes = this.parsePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
         for (let subNodeType of matchNodeTypes) {
@@ -67,7 +67,7 @@ function DRegExp(grammarRules) {
     this.tokenizerCaptureGroupsRegexp = new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))');
     console.log('tokenizerCaptureGroupsRegexp: ' + this.tokenizerCaptureGroupsRegexp);
 
-    // Expand node patterns
+    // Expand parse patterns
     for (let nodeType of this.nodeTypes) {
         if (!this.parsePatterns[nodeType]) {
             continue;
