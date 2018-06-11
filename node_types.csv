@@ -1,4 +1,4 @@
-nodetype,literalpattern,nodepattern
+nodetype,charpattern,nodepattern
 Dot,\.,
 Backslash,\\,
 Slash,/,
