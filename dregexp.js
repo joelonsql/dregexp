@@ -120,7 +120,7 @@ class DRegExp {
                     continue;
                 } else if (m.length != 2) { // 2 means 1 capture group, since m[0] is whole match, and m[1] the first capture group, i.e. 2 array elements
                     console.error('multiple capture groups matched: nodeString: ' + nodeString + ' expandedParsePattern: ' + this.expandedParsePatterns[nodeType]);
-                    return false;
+                    return null;
                 }
                 let subNodeString = m[1];
                 nodeString = nodeString.replace(subNodeString, this.encodeNodeType(nodeType) + this.nodeId + ',');
@@ -129,7 +129,7 @@ class DRegExp {
                     let subNode = subNodeString.match(/([가-판])(\d+),/u); // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
                     if (subNode == null) {
                         console.error('unable to parse: ' + subNodeString);
-                        return false;
+                        return null;
                     }
                     let subNodeType = this.decodeNodeType(subNode[1]);
                     let subNodeId = subNode[2];
