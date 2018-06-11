@@ -1,4 +1,4 @@
-nodetype,charpattern,nodepattern
+nodetype,tokenizepattern,parsepattern
 Dot,\.,
 Backslash,\\,
 Slash,/,

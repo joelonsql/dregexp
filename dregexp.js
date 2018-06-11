@@ -3,10 +3,10 @@
 function DRegExp(grammarRules) {
     this.nodeTypes = [];
     this.nodeTypeIds = {};
-    this.charPatterns = {};
-    this.nodePatterns = {};
-    this.expandedCharPatterns = {};
-    this.expandedNodePatterns = {};
+    this.tokenizePatterns = {};
+    this.parsePatterns = {};
+    this.expandedTokenizePatterns = {};
+    this.expandedParsePatterns = {};
     this.tokenNodeTypes = [];
     this.parserNodeTypes = [];
     this.nodeId = 0;
@@ -25,21 +25,20 @@ function DRegExp(grammarRules) {
             return null;
         } else {
             this.nodeTypes.push(rule.nodetype);
-            this.nodeTypeIds[rule.nodetype] = nodeTypeId;
-            nodeTypeId++;
+            this.nodeTypeIds[rule.nodetype] = nodeTypeId++;
         }
 
         if (rule.charpattern.length > 0 && rule.nodepattern.length > 0) {
             console.error(rule.nodetype + ': only one of charpattern or nodepattern must be defined, not both');
             return null;
         } else if (rule.charpattern.length > 0) {
-            this.charPatterns[rule.nodetype] = rule.charpattern;
+            this.tokenizePatterns[rule.nodetype] = rule.charpattern;
         } else if (rule.nodepattern.length > 0) {
             if (rule.nodepattern.match(/\\/)) {
                 console.error(rule.nodetype + ': nodepattern must not contain backslashes (\\)');
                 return null;
             }
-            this.nodePatterns[rule.nodetype] = rule.nodepattern;
+            this.parsePatterns[rule.nodetype] = rule.nodepattern;
         } else {
             console.error(rule.nodetype + ': charpattern or nodepattern must be defined');
             return null;
@@ -47,11 +46,11 @@ function DRegExp(grammarRules) {
     }
 
     // Expand char patterns in node patterns
-    for (let nodeType in this.nodePatterns) {
-        let matchNodeTypes = this.nodePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
+    for (let nodeType in this.parsePatterns) {
+        let matchNodeTypes = this.parsePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
         for (let subNodeType of matchNodeTypes) {
-            if (this.charPatterns[subNodeType] && !this.expandedCharPatterns[subNodeType]) {
-                this.expandedCharPatterns[subNodeType] = this.expandCharPattern(subNodeType);
+            if (this.tokenizePatterns[subNodeType] && !this.expandedTokenizePatterns[subNodeType]) {
+                this.expandedTokenizePatterns[subNodeType] = this.expandTokenizePattern(subNodeType);
             }
         }
     }
@@ -59,22 +58,22 @@ function DRegExp(grammarRules) {
     // Build tokenizer regexp, one capture group per token node type
     let tokenRegexes = [];
     for (let nodeType of this.nodeTypes) {
-        if (!this.expandedCharPatterns[nodeType]) {
+        if (!this.expandedTokenizePatterns[nodeType]) {
             continue;
         }
         this.tokenNodeTypes.push(nodeType);
-        tokenRegexes.push(this.expandedCharPatterns[nodeType]);
+        tokenRegexes.push(this.expandedTokenizePatterns[nodeType]);
     }
     this.tokenizerCaptureGroupsRegexp = new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))');
     console.log('tokenizerCaptureGroupsRegexp: ' + this.tokenizerCaptureGroupsRegexp);
 
     // Expand node patterns
     for (let nodeType of this.nodeTypes) {
-        if (!this.nodePatterns[nodeType]) {
+        if (!this.parsePatterns[nodeType]) {
             continue;
         }
         this.parserNodeTypes.push(nodeType);
-        this.expandedNodePatterns[nodeType] = new RegExp(this.expandNodePattern(nodeType));
+        this.expandedParsePatterns[nodeType] = new RegExp(this.expandParsePattern(nodeType));
     }
 
 }
@@ -108,8 +107,7 @@ DRegExp.prototype.tokenize = function(inputString) {
             matched = true;
             console.log(this.tokenNodeTypes[i] +  " " + m[i+1]);
             this.nodes[this.nodeId] = [this.tokenNodeTypes[i], m[i+1]];
-            nodeString += this.encodeNodeType(this.tokenNodeTypes[i]) + this.nodeId + ',';
-            this.nodeId++;
+            nodeString += this.encodeNodeType(this.tokenNodeTypes[i]) + this.nodeId++ + ',';
             inputString = inputString.slice(m[i+1].length);
         }
     }
@@ -120,11 +118,11 @@ DRegExp.prototype.parse = function(nodeString) {
     for (let didWork = true; didWork; ) {
         didWork = false;
         for (let nodeType of this.parserNodeTypes) {
-            let m = nodeString.match(this.expandedNodePatterns[nodeType]);
+            let m = nodeString.match(this.expandedParsePatterns[nodeType]);
             if (m == null) {
                 continue;
             } else if (m.length != 2) { // 2 means 1 capture group, since m[0] is whole match, and m[1] the first capture group, i.e. 2 array elements
-                console.error('multiple capture groups matched: nodeString: ' + nodeString + ' expandedNodePattern: ' + this.expandedNodePatterns[nodeType]);
+                console.error('multiple capture groups matched: nodeString: ' + nodeString + ' expandedParsePattern: ' + this.expandedParsePatterns[nodeType]);
                 return false;
             }
             let subNodeString = m[1];
@@ -142,8 +140,7 @@ DRegExp.prototype.parse = function(nodeString) {
                 subNodeString = subNodeString.replace(subNode[0], '');
                 console.log(subNodeType + subNodeId + ' -> ' + nodeType + this.nodeId);
             }
-            this.nodes[this.nodeId] = [nodeType, subNodes];
-            this.nodeId++;
+            this.nodes[this.nodeId++] = [nodeType, subNodes];
             didWork = true;
             break;
         }
@@ -151,37 +148,37 @@ DRegExp.prototype.parse = function(nodeString) {
     this.nodeId--;
     let finalNodeType = this.nodeTypes[this.nodeTypes.length - 1];
     if (nodeString.match(new RegExp('^' + this.encodeNodeType(finalNodeType) + this.nodeId + ',$')) == null) {
-        console.error('Parser error, no nodePattern matches remaining nodeString: ' + nodeString);
+        console.error('Parser error, no parsePattern matches remaining nodeString: ' + nodeString);
         return null;
     }
     return this.nodes[this.nodeId]; // parseTree
 }
 
-DRegExp.prototype.expandCharPattern = function(nodeType) {
-    let charPattern = this.charPatterns[nodeType];
-    let matchNodeTypes = charPattern.match(/[A-Za-z_]{2,}/g) || [];
+DRegExp.prototype.expandTokenizePattern = function(nodeType) {
+    let tokenizePattern = this.tokenizePatterns[nodeType];
+    let matchNodeTypes = tokenizePattern.match(/[A-Za-z_]{2,}/g) || [];
     for (let subNodeType of matchNodeTypes) {
-        charPattern = charPattern.replace(new RegExp(subNodeType, 'g'), this.expandCharPattern(subNodeType));
+        tokenizePattern = tokenizePattern.replace(new RegExp(subNodeType, 'g'), this.expandTokenizePattern(subNodeType));
     }
-    charPattern = charPattern.replace(/\s+/g, '');
-    return charPattern;
+    tokenizePattern = tokenizePattern.replace(/\s+/g, '');
+    return tokenizePattern;
 }
 
-DRegExp.prototype.expandNodePattern = function(nodeType) {
-    let nodePattern = this.nodePatterns[nodeType];
-    let bracketExpressions = nodePattern.match(/\[[A-Za-z_]{2,}(?:\s+[A-Za-z_]{2,})*\]/g) || [];
+DRegExp.prototype.expandParsePattern = function(nodeType) {
+    let parsePattern = this.parsePatterns[nodeType];
+    let bracketExpressions = parsePattern.match(/\[[A-Za-z_]{2,}(?:\s+[A-Za-z_]{2,})*\]/g) || [];
     for (let bracketExpression of bracketExpressions) {
         let expandedBracketExpression = '';
         let bracketNodeTypes = bracketExpression.match(/[A-Za-z_]{2,}/g);
         for (let bracketNodeType of bracketNodeTypes) {
             expandedBracketExpression += this.encodeNodeType(bracketNodeType);
         }
-        nodePattern = nodePattern.replace(bracketExpression, '[' + expandedBracketExpression + ']\\d+,')
+        parsePattern = parsePattern.replace(bracketExpression, '[' + expandedBracketExpression + ']\\d+,')
     }
-    let subNodeTypes = nodePattern.match(/[A-Za-z_]{2,}/g) || [];
+    let subNodeTypes = parsePattern.match(/[A-Za-z_]{2,}/g) || [];
     for (let subNodeType of subNodeTypes) {
-        nodePattern = nodePattern.replace(subNodeType, '(?:' + this.encodeNodeType(subNodeType) + '\\d+,)');
+        parsePattern = parsePattern.replace(subNodeType, '(?:' + this.encodeNodeType(subNodeType) + '\\d+,)');
     }
-    nodePattern = nodePattern.replace(/\s+/g, '');
-    return nodePattern;
+    parsePattern = parsePattern.replace(/\s+/g, '');
+    return parsePattern;
 }
