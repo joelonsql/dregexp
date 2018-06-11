@@ -46,7 +46,7 @@ function DRegExp(grammarRules) {
         }
     }
 
-    // Expand char patterns
+    // Expand char patterns in node patterns
     for (let nodeType in this.nodePatterns) {
         let matchNodeTypes = this.nodePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
         for (let subNodeType of matchNodeTypes) {

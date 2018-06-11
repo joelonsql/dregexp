@@ -13,8 +13,8 @@ Papa.parse('http://localhost/~joel/dregexp/node_types.csv', {
         let nodeString = drx.tokenize(inputString);
         console.log('nodeString: ' + nodeString);
 
-        let AST = drx.parse(nodeString);
-        console.log(AST);
+        let parseTree = drx.parse(nodeString);
+        console.log(parseTree);
 
     }
 });
