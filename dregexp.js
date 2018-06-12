@@ -9,8 +9,6 @@ class DRegExp {
         this.expandedParsePatterns = {};
         this.tokenNodeTypes = [];
         this.parserNodeTypes = [];
-        this.nodeId = 0;
-        this.nodes = [];
         this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
         this.tokenizerCaptureGroupsRegexp = null;
 
@@ -86,7 +84,7 @@ class DRegExp {
     }
 
     tokenize(inputString) {
-        let nodeString = '';
+        let tokenNodes = [];
         while (inputString.length > 0) {
             let m = inputString.match(this.tokenizerCaptureGroupsRegexp);
             if (m == null) {
@@ -103,15 +101,19 @@ class DRegExp {
                 }
                 matched = true;
                 console.log(this.tokenNodeTypes[i] +  " " + m[i+1]);
-                this.nodes[this.nodeId] = [this.tokenNodeTypes[i], m[i+1]];
-                nodeString += this.encodeNodeType(this.tokenNodeTypes[i]) + this.nodeId++ + ',';
+                tokenNodes.push([this.tokenNodeTypes[i], m[i+1]]);
                 inputString = inputString.slice(m[i+1].length);
             }
         }
-        return nodeString;
+        return tokenNodes;
     }
 
-    parse(nodeString) {
+    parse(tokenNodes) {
+        let nodeString = '';
+        let nodeId = 0;
+        for (let node of tokenNodes) {
+            nodeString += this.encodeNodeType(node[0]) + nodeId++ + ',';
+        }
         for (let didWork = true; didWork; ) {
             didWork = false;
             for (let nodeType of this.parserNodeTypes) {
@@ -123,7 +125,7 @@ class DRegExp {
                     return null;
                 }
                 let subNodeString = m[1];
-                nodeString = nodeString.replace(subNodeString, this.encodeNodeType(nodeType) + this.nodeId + ',');
+                nodeString = nodeString.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
                 let subNodes = [];
                 while (subNodeString.length > 0) {
                     let subNode = subNodeString.match(/([가-판])(\d+),/u); // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
@@ -133,22 +135,22 @@ class DRegExp {
                     }
                     let subNodeType = this.decodeNodeType(subNode[1]);
                     let subNodeId = subNode[2];
-                    subNodes.push(this.nodes[subNodeId]);
+                    subNodes.push(tokenNodes[subNodeId]);
                     subNodeString = subNodeString.replace(subNode[0], '');
-                    console.log(subNodeType + subNodeId + ' -> ' + nodeType + this.nodeId);
+                    console.log(subNodeType + subNodeId + ' -> ' + nodeType + nodeId);
                 }
-                this.nodes[this.nodeId++] = [nodeType, subNodes];
+                tokenNodes[nodeId++] = [nodeType, subNodes];
                 didWork = true;
                 break;
             }
         }
-        this.nodeId--;
+        nodeId--;
         let finalNodeType = this.nodeTypes[this.nodeTypes.length - 1];
-        if (nodeString.match(new RegExp('^' + this.encodeNodeType(finalNodeType) + this.nodeId + ',$')) == null) {
+        if (nodeString.match(new RegExp('^' + this.encodeNodeType(finalNodeType) + nodeId + ',$')) == null) {
             console.error('Parser error, no parsePattern matches remaining nodeString: ' + nodeString);
             return null;
         }
-        return this.nodes[this.nodeId]; // parseTree
+        return tokenNodes[nodeId]; // parseTree
     }
 
     expandTokenizePattern(nodeType) {

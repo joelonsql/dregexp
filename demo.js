@@ -1,19 +1,19 @@
 'use strict';
 
-Papa.parse('http://localhost/~joel/dregexp/node_types.csv', {
+Papa.parse('node_types.csv', {
     header: true,
     download: true,
     complete: function(results) {
 
         let drx = new DRegExp(results.data);
 
-        let inputString = '{"foo":123, "bar": {"abc":true, "def":[10,20,30]} }';
+        let inputString = '{"foo":"bar"}';
         console.log('inputString: ' + inputString);
 
-        let nodeString = drx.tokenize(inputString);
-        console.log('nodeString: ' + nodeString);
+        let tokenNodes = drx.tokenize(inputString);
+        console.log('tokenNodes: ' + tokenNodes);
 
-        let parseTree = drx.parse(nodeString);
+        let parseTree = drx.parse(tokenNodes);
         console.log(parseTree);
 
         function createTreantNodeStructure(parseTree) {
