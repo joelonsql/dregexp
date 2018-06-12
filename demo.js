@@ -7,7 +7,7 @@ Papa.parse('node_types.csv', {
 
         let drx = new DRegExp(results.data);
 
-        let inputString = '{"foo":"bar"}';
+        let inputString = '{"foo":123, "bar": {"abc":true, "def":[10,20,30]} }';
         console.log('inputString: ' + inputString);
 
         let tokenNodes = drx.tokenize(inputString);
