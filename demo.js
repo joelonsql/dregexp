@@ -1,13 +1,9 @@
 'use strict';
 
-Papa.parse('node_types.csv', {
-    header: true,
-    download: true,
-    complete: function(results) {
+var drx;
 
-        let drx = new DRegExp(results.data);
-
-        let inputString = '{"foo":123, "bar": {"abc":true, "def":[10,20,30]} }';
+function parseAndDrawTree() {
+        let inputString = document.getElementById('inputString').value;
         console.log('inputString: ' + inputString);
 
         let tokenNodes = drx.tokenize(inputString);
@@ -46,6 +42,15 @@ Papa.parse('node_types.csv', {
             nodeStructure: createTreantNodeStructure(parseTree)
         };
         new Treant( simple_chart_config );
+}
+
+Papa.parse('node_types.csv', {
+    header: true,
+    download: true,
+    complete: function(results) {
+
+        drx = new DRegExp(results.data);
+        parseAndDrawTree();
 
     }
 });
