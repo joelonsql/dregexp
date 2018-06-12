@@ -16,6 +16,9 @@ Papa.parse('node_types.csv', {
         let parseTree = drx.parse(tokenNodes);
         console.log(parseTree);
 
+        // The code below is only necessary to draw the tree diagram
+        // using the third-party library Treant.js
+        // from http://fperucic.github.io/treant-js/
         function createTreantNodeStructure(parseTree) {
             let node = {
                 text: { name: parseTree[0] }
@@ -33,7 +36,6 @@ Papa.parse('node_types.csv', {
             }
             return node;
         }
-
         let simple_chart_config = {
             chart: {
                 container: "#OrganiseChart-simple",
@@ -43,7 +45,6 @@ Papa.parse('node_types.csv', {
             },
             nodeStructure: createTreantNodeStructure(parseTree)
         };
-
         new Treant( simple_chart_config );
 
     }
