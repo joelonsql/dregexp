@@ -48,9 +48,23 @@ Papa.parse('node_types.csv', {
     header: true,
     download: true,
     complete: function(results) {
-
         drx = new DRegExp(results.data);
         parseAndDrawTree();
-
+        let data = [];
+        for (let rule of results.data) {
+            data.push([rule.nodetype, rule.tokenizepattern, rule.parsepattern]);
+        }
+        $('#mytable').jexcel({ data:data, colWidths: [ 300, 500, 500 ] });
+        $('#reloadGrammar').on('click', function () {
+            let data = $('#mytable').jexcel('getData');
+            console.log('jExcel:');
+            console.log(data);
+            let newGrammar = [];
+            for (let row of data) {
+                newGrammar.push({nodetype: row[0], tokenizepattern: row[1], parsepattern: row[2]});
+            }
+            drx = new DRegExp(newGrammar);
+            parseAndDrawTree();
+        })
     }
 });
