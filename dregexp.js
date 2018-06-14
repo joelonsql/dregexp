@@ -1,19 +1,21 @@
 class DRegExp {
 
     constructor(grammarRules) {
-        this.nodeTypes = [];
-        this.nodeTypeIds = {};
+        this.nodeTypes = ['?']; // the first nodeType is a special one for unrecognized characters
+        this.nodeTypeIds = {'?':0};
         this.tokenizePatterns = {};
         this.parsePatterns = {};
         this.expandedTokenizePatterns = {};
         this.expandedParsePatterns = {};
+        this.expandedErrorRecovery = {};
         this.tokenNodeTypes = [];
         this.parserNodeTypes = [];
         this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
         this.tokenizerCaptureGroupsRegexp = null;
 
         // Load grammar rules
-        let nodeTypeId = 0;
+        let nodeTypeId = 1;
+        let haveParsePatterns = false;
         for (let rule of grammarRules) {
             if (this.nodeTypes.includes(rule.nodetype)) {
                 console.error(rule.nodetype + ': defined more than once');
@@ -37,19 +39,28 @@ class DRegExp {
                     return null;
                 }
                 this.parsePatterns[rule.nodetype] = rule.parsepattern;
+                haveParsePatterns = true;
             } else {
                 console.error(rule.nodetype + ': tokenizepattern or parsepattern must be defined');
                 return null;
             }
         }
 
-        // Expand tokenize patterns in parse patterns
-        for (let nodeType in this.parsePatterns) {
-            let matchNodeTypes = this.parsePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
-            for (let subNodeType of matchNodeTypes) {
-                if (this.tokenizePatterns[subNodeType] && !this.expandedTokenizePatterns[subNodeType]) {
-                    this.expandedTokenizePatterns[subNodeType] = this.expandTokenizePattern(subNodeType);
+        if (haveParsePatterns) {
+            // Only expand nodeTypes that are tokenizePatterns and used within parsePatterns
+            // as any other tokenizePatterns nodeTypes are merely fragments to compose bigger ones.
+            for (let nodeType in this.parsePatterns) {
+                let matchNodeTypes = this.parsePatterns[nodeType].match(/[A-Za-z_]{2,}/g);
+                for (let subNodeType of matchNodeTypes) {
+                    if (this.tokenizePatterns[subNodeType] && !this.expandedTokenizePatterns[subNodeType]) {
+                        this.expandedTokenizePatterns[subNodeType] = this.expandTokenizePattern(subNodeType);
+                    }
                 }
+            }
+        } else {
+            // No parsePatterns, expand all nodeTypes since we will only tokenize
+            for (let subNodeType of this.nodeTypes) {
+                this.expandedTokenizePatterns[subNodeType] = this.expandTokenizePattern(subNodeType);
             }
         }
 
@@ -72,7 +83,9 @@ class DRegExp {
             }
             this.parserNodeTypes.push(nodeType);
             this.expandedParsePatterns[nodeType] = new RegExp(this.expandParsePattern(nodeType));
+            this.expandedErrorRecovery[nodeType] = new RegExp(this.expandParsePattern(nodeType, '(?:' + this.encodeNodeType('?') + '\\d+,)?'));
         }
+
     }
 
     encodeNodeType(nodeType) {
@@ -85,10 +98,15 @@ class DRegExp {
 
     tokenize(inputString) {
         let tokenNodes = [];
+        let invalidString = '';
         while (inputString.length > 0) {
             let m = inputString.match(this.tokenizerCaptureGroupsRegexp);
             if (m == null) {
-                console.error('unable to tokenize: ' + inputString);
+                invalidString += inputString.charAt(0);
+                inputString = inputString.slice(1);
+                continue;
+            } else if (m.length != this.tokenNodeTypes.length + 1) {
+                console.error('different number of capture groups than token node types');
                 return null;
             }
             let matched = false;
@@ -100,10 +118,19 @@ class DRegExp {
                     return null;
                 }
                 matched = true;
+                if (invalidString.length > 0) {
+                    console.error('unable to tokenize: ' + invalidString);
+                    tokenNodes.push(['?', invalidString]);
+                    invalidString = '';
+                }
                 console.log(this.tokenNodeTypes[i] +  " " + m[i+1]);
                 tokenNodes.push([this.tokenNodeTypes[i], m[i+1]]);
                 inputString = inputString.slice(m[i+1].length);
             }
+        }
+        if (invalidString.length > 0) {
+            console.error('unable to tokenize: ' + invalidString);
+            tokenNodes.push(['?', invalidString]);
         }
         return tokenNodes;
     }
@@ -114,14 +141,18 @@ class DRegExp {
         for (let node of tokenNodes) {
             nodeString += this.encodeNodeType(node[0]) + nodeId++ + ',';
         }
+        let errorRecovery = false;
         for (let didWork = true; didWork; ) {
             didWork = false;
             for (let nodeType of this.parserNodeTypes) {
-                let m = nodeString.match(this.expandedParsePatterns[nodeType]);
+                let m = nodeString.match(errorRecovery ? this.expandedErrorRecovery[nodeType] : this.expandedParsePatterns[nodeType]);
                 if (m == null) {
                     continue;
+                } else if (m.length == 1) {
+                    console.error(nodeType + ': no capture group defined');
+                    return null;
                 } else if (m.length != 2) { // 2 means 1 capture group, since m[0] is whole match, and m[1] the first capture group, i.e. 2 array elements
-                    console.error('multiple capture groups matched: nodeString: ' + nodeString + ' expandedParsePattern: ' + this.expandedParsePatterns[nodeType]);
+                    console.error(nodeType + ': multiple capture groups matched');
                     return null;
                 }
                 let subNodeString = m[1];
@@ -143,27 +174,51 @@ class DRegExp {
                 didWork = true;
                 break;
             }
+            if (!didWork && nodeString.match(/^[가-판]\d+,$/u) == null && !errorRecovery) {
+                didWork = true;
+                errorRecovery = true;
+            }
+        }
+        if (nodeString.match(/^[가-판]\d+,$/u) == null) {
+            let subNodes = [];
+            while (nodeString.length > 0) {
+                let subNode = nodeString.match(/([가-판])(\d+),/u);
+                if (subNode == null) {
+                    console.error('unable to parse: ' + nodeString);
+                    return null;
+                }
+                let subNodeType = this.decodeNodeType(subNode[1]);
+                let subNodeId = subNode[2];
+                subNodes.push(tokenNodes[subNodeId]);
+                nodeString = nodeString.replace(subNode[0], '');
+            }
+            tokenNodes[nodeId++] = ['?', subNodes];
         }
         nodeId--;
-        let finalNodeType = this.nodeTypes[this.nodeTypes.length - 1];
-        if (nodeString.match(new RegExp('^' + this.encodeNodeType(finalNodeType) + nodeId + ',$')) == null) {
-            console.error('Parser error, no parsePattern matches remaining nodeString: ' + nodeString);
-            return null;
-        }
         return tokenNodes[nodeId]; // parseTree
     }
 
-    expandTokenizePattern(nodeType) {
+    expandTokenizePattern(nodeType, visited = []) {
+        if (visited.includes(nodeType)) {
+            console.error('cycle detected ' + nodeType);
+            return null;
+        }
+        visited.push(nodeType);
         let tokenizePattern = this.tokenizePatterns[nodeType];
+        console.log('nodeType: ' + nodeType + ' tokenizePattern: ' + tokenizePattern);
+        if (tokenizePattern == null) {
+            console.error('no such tokenizePattern: ' + nodeType);
+            return null;
+        }
         let matchNodeTypes = tokenizePattern.match(/[A-Za-z_]{2,}/g) || [];
         for (let subNodeType of matchNodeTypes) {
-            tokenizePattern = tokenizePattern.replace(new RegExp(subNodeType, 'g'), this.expandTokenizePattern(subNodeType));
+            tokenizePattern = tokenizePattern.replace(new RegExp(subNodeType, 'g'), this.expandTokenizePattern(subNodeType, visited.slice(0)));
         }
         tokenizePattern = tokenizePattern.replace(/\s+/g, '');
         return tokenizePattern;
     }
 
-    expandParsePattern(nodeType) {
+    expandParsePattern(nodeType, errorRecovery = '') {
         let parsePattern = this.parsePatterns[nodeType];
         let bracketExpressions = parsePattern.match(/\[[A-Za-z_]{2,}(?:\s+[A-Za-z_]{2,})*\]/g) || [];
         for (let bracketExpression of bracketExpressions) {
@@ -172,11 +227,11 @@ class DRegExp {
             for (let bracketNodeType of bracketNodeTypes) {
                 expandedBracketExpression += this.encodeNodeType(bracketNodeType);
             }
-            parsePattern = parsePattern.replace(bracketExpression, '[' + expandedBracketExpression + ']\\d+,')
+            parsePattern = parsePattern.replace(bracketExpression, '[' + expandedBracketExpression + ']\\d+,' + errorRecovery);
         }
         let subNodeTypes = parsePattern.match(/[A-Za-z_]{2,}/g) || [];
         for (let subNodeType of subNodeTypes) {
-            parsePattern = parsePattern.replace(subNodeType, '(?:' + this.encodeNodeType(subNodeType) + '\\d+,)');
+            parsePattern = parsePattern.replace(subNodeType, '(?:' + this.encodeNodeType(subNodeType) + '\\d+,' + errorRecovery + ')');
         }
         parsePattern = parsePattern.replace(/\s+/g, '');
         return parsePattern;
