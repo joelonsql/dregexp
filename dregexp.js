@@ -246,7 +246,14 @@ class DRegExp {
     }
 
     eliminateNodes(parseTree) {
-        let AST = [parseTree[0]];
+        // Need two passes, as first pass can eliminate leaf nodes,
+        // that allow the parent node to also be eliminated if it only has
+        // a single child after the leaf nodes have been eliminated.
+        return this._eliminateNodes(this._eliminateNodes(parseTree));
+    }
+
+    _eliminateNodes(parseTree) {
+        let reducedTree = [parseTree[0]];
         if (parseTree[1].constructor === Array) {
             let children = [];
             for (let child of parseTree[1]) {
@@ -255,16 +262,16 @@ class DRegExp {
                 let multipleChildren = child[1].constructor === Array && child[1].length > 1;
 
                 if (isPrimitiveType || multipleChildren) {
-                    children.push(this.eliminateNodes(child));
+                    children.push(this._eliminateNodes(child));
                 } else if (!isPrimitiveType && singleChild) {
-                    children.push(this.eliminateNodes(child[1][0]));
+                    children.push(this._eliminateNodes(child[1][0]));
                 }
             }
-            AST[1] = children;
+            reducedTree[1] = children;
         } else {
-            AST[1] = parseTree[1];
+            reducedTree[1] = parseTree[1];
         }
-        return AST;
+        return reducedTree;
     }
 
 }
