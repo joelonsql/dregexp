@@ -182,10 +182,6 @@ class DRegExp {
                 didWork = true;
                 break;
             }
-            if (!didWork && nodeString.match(/^[가-판]\d+,$/u) == null && !errorRecovery) {
-                didWork = true;
-                errorRecovery = true;
-            }
         }
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {
             let subNodes = [];
