@@ -4,12 +4,18 @@ var drx;
 
 function parseAndDrawTree() {
         let inputString = document.getElementById('inputString').value;
+        let eliminateUselessNodes = document.getElementById('eliminateUselessNodes').checked;
         console.log('inputString: ' + inputString);
 
         let tokenNodes = drx.tokenize(inputString);
         console.log('tokenNodes: ' + tokenNodes);
 
         let parseTree = drx.parse(tokenNodes);
+        if (eliminateUselessNodes) {
+            parseTree = drx.eliminateNodes(parseTree);
+        }
+
+        console.log('parseTree:');
         console.log(parseTree);
 
         // The code below is only necessary to draw the tree diagram
@@ -34,7 +40,7 @@ function parseAndDrawTree() {
         }
         let simple_chart_config = {
             chart: {
-                container: "#OrganiseChart-simple",
+                container: "#parseTree",
                 node: {
                     collapsable: true
                 }
@@ -52,19 +58,30 @@ Papa.parse('node_types.csv', {
         parseAndDrawTree();
         let data = [];
         for (let rule of results.data) {
-            data.push([rule.nodetype, rule.tokenizepattern, rule.parsepattern]);
+            data.push([rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype]);
         }
-        $('#mytable').jexcel({ data:data, colWidths: [ 300, 500, 500 ] });
+        $('#mytable').jexcel({
+            data:data,
+            colWidths: [ 300, 500, 500, 100 ],
+            colHeaders: [ 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType' ]
+        });
         $('#reloadGrammar').on('click', function () {
             let data = $('#mytable').jexcel('getData');
-            console.log('jExcel:');
-            console.log(data);
             let newGrammar = [];
             for (let row of data) {
-                newGrammar.push({nodetype: row[0], tokenizepattern: row[1], parsepattern: row[2]});
+                newGrammar.push({nodetype: row[0], tokenizepattern: row[1], parsepattern: row[2], primitivetype: row[3]});
             }
             drx = new DRegExp(newGrammar);
             parseAndDrawTree();
-        })
+        });
+        $('#emptyGrammar').on('click', function () {
+            $('#mytable').jexcel({
+                data:[['','','','0']],
+                colWidths: [ 300, 500, 500, 100 ],
+                colHeaders: [ 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType' ]
+            });
+            drx = new DRegExp([{nodetype: '', tokenizepattern: '', parsepattern: '', primitivetype: ''}]);
+            parseAndDrawTree();
+        });
     }
 });

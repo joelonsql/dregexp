@@ -12,6 +12,7 @@ class DRegExp {
         this.parserNodeTypes = [];
         this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
         this.tokenizerCaptureGroupsRegexp = null;
+        this.primitiveTypes = {};
 
         // Load grammar rules
         let nodeTypeId = 1;
@@ -43,6 +44,10 @@ class DRegExp {
             } else {
                 console.error(rule.nodetype + ': tokenizepattern or parsepattern must be defined');
                 return null;
+            }
+
+            if (rule.primitivetype.length > 0) {
+                this.primitiveTypes[rule.nodetype] = rule.primitivetype;
             }
         }
 
@@ -138,10 +143,13 @@ class DRegExp {
     parse(tokenNodes) {
         let nodeString = '';
         let nodeId = 0;
+        let errorRecovery = false;
         for (let node of tokenNodes) {
             nodeString += this.encodeNodeType(node[0]) + nodeId++ + ',';
+            if (node[0] == '?') {
+                errorRecovery = true;
+            }
         }
-        let errorRecovery = false;
         for (let didWork = true; didWork; ) {
             didWork = false;
             for (let nodeType of this.parserNodeTypes) {
@@ -235,6 +243,28 @@ class DRegExp {
         }
         parsePattern = parsePattern.replace(/\s+/g, '');
         return parsePattern;
+    }
+
+    eliminateNodes(parseTree) {
+        let AST = [parseTree[0]];
+        if (parseTree[1].constructor === Array) {
+            let children = [];
+            for (let child of parseTree[1]) {
+                let isPrimitiveType = this.primitiveTypes.hasOwnProperty(child[0]);
+                let singleChild = child[1].constructor === Array && child[1].length == 1;
+                let multipleChildren = child[1].constructor === Array && child[1].length > 1;
+
+                if (isPrimitiveType || multipleChildren) {
+                    children.push(this.eliminateNodes(child));
+                } else if (!isPrimitiveType && singleChild) {
+                    children.push(this.eliminateNodes(child[1][0]));
+                }
+            }
+            AST[1] = children;
+        } else {
+            AST[1] = parseTree[1];
+        }
+        return AST;
     }
 
 }
