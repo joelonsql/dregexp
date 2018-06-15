@@ -213,7 +213,6 @@ class DRegExp {
         }
         visited.push(nodeType);
         let tokenizePattern = this.tokenizePatterns[nodeType];
-        console.log('nodeType: ' + nodeType + ' tokenizePattern: ' + tokenizePattern);
         if (tokenizePattern == null) {
             console.error('no such tokenizePattern: ' + nodeType);
             return null;
@@ -246,10 +245,11 @@ class DRegExp {
     }
 
     eliminateNodes(parseTree) {
-        // Need two passes, as first pass can eliminate leaf nodes,
-        // that allow the parent node to also be eliminated if it only has
-        // a single child after the leaf nodes have been eliminated.
-        return this._eliminateNodes(this._eliminateNodes(parseTree));
+        for (this.didWork = true; this.didWork; ) {
+            this.didWork = false;
+            parseTree = this._eliminateNodes(parseTree);
+        }
+        return parseTree;
     }
 
     _eliminateNodes(parseTree) {
@@ -265,6 +265,9 @@ class DRegExp {
                     children.push(this._eliminateNodes(child));
                 } else if (!isPrimitiveType && singleChild) {
                     children.push(this._eliminateNodes(child[1][0]));
+                    this.didWork = true;
+                } else {
+                    this.didWork = true;
                 }
             }
             reducedTree[1] = children;
