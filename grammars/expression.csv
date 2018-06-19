@@ -1,0 +1,8 @@
+parser,nodetype,tokenizepattern,parsepattern,primitivetype,nodegroup,precedence,subparser
+Expression,Group,,(LeftParen Operand RightParen),Number,Operand,,
+Expression,UnaryPlus,,(?: ^ | [LeftParen Operator] ) (Plus Operand),Number,Operand,Prefix,
+Expression,UnaryMinus,,(?: ^ | [LeftParen Operator] ) (Minus Operand),Number,Operand,Prefix,
+Expression,Multiply,,(Operand Asterisk Operand),Number,Operand,Product,
+Expression,Divide,,(Operand Slash Operand),Number,Operand,Product,
+Expression,Add,,(Operand Plus Operand),Number,Operand,Sum,
+Expression,Subtract,,(Operand Minus Operand),Number,Operand,Sum,

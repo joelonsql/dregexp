@@ -1,0 +1,11 @@
+parser,nodetype,tokenizepattern,parsepattern,primitivetype,nodegroup,precedence,subparser
+Math,Plus,\+,,,Operator,,
+Math,Minus,\-,,,Operator,,
+Math,Asterisk,\*,,,Operator,,
+Math,Slash,/,,,Operator,,
+Math,LeftParen,\(,,,,,
+Math,RightParen,\),,,,,
+Math,Number,\d+,,Number,Operand,,
+Math,Variable,[a-z A-Z _]+,,String,Operand,,
+Math,SubExpression,,(LeftParen [Operand Operator]+ RightParen),,Operand,,Expression
+Math,Expression,,([Operand Operator]+),,,,Expression

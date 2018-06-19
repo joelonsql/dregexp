@@ -1,8 +1,26 @@
 'use strict';
 
-var drx;
+var drx = new DRegExp();
+
+function updateTable() {
+        let data = [];
+        for (let nodeType of drx.nodeTypes) {
+            console.log(nodeType);
+            if (nodeType == '?') {
+                continue;
+            }
+            let rule = drx.grammarRules[nodeType];
+            data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
+        }
+        $('#mytable').jexcel({
+            data:data,
+            colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100],
+            colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
+        });
+}
 
 function parseAndDrawTree() {
+
         let inputString = document.getElementById('inputString').value;
         let eliminateUselessNodes = document.getElementById('eliminateUselessNodes').checked;
         console.log('inputString: ' + inputString);
@@ -10,7 +28,7 @@ function parseAndDrawTree() {
         let tokenNodes = drx.tokenize(inputString);
         console.log('tokenNodes: ' + tokenNodes);
 
-        let parseTree = drx.parse(tokenNodes);
+        let parseTree = drx.parse('Math', tokenNodes);
         if (eliminateUselessNodes) {
             parseTree = drx.eliminateNodes(parseTree);
         }
@@ -50,38 +68,20 @@ function parseAndDrawTree() {
         new Treant( simple_chart_config );
 }
 
-Papa.parse('node_types.csv', {
+Papa.parse('grammars/math.csv', {
     header: true,
     download: true,
     complete: function(results) {
-        drx = new DRegExp(results.data);
-        parseAndDrawTree();
-        let data = [];
-        for (let rule of results.data) {
-            data.push([rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype]);
-        }
-        $('#mytable').jexcel({
-            data:data,
-            colWidths: [ 300, 500, 500, 100 ],
-            colHeaders: [ 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType' ]
-        });
-        $('#reloadGrammar').on('click', function () {
-            let data = $('#mytable').jexcel('getData');
-            let newGrammar = [];
-            for (let row of data) {
-                newGrammar.push({nodetype: row[0], tokenizepattern: row[1], parsepattern: row[2], primitivetype: row[3]});
-            }
-            drx = new DRegExp(newGrammar);
-            parseAndDrawTree();
-        });
-        $('#emptyGrammar').on('click', function () {
-            $('#mytable').jexcel({
-                data:[['','','','0']],
-                colWidths: [ 300, 500, 500, 100 ],
-                colHeaders: [ 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType' ]
-            });
-            drx = new DRegExp([{nodetype: '', tokenizepattern: '', parsepattern: '', primitivetype: ''}]);
-            parseAndDrawTree();
-        });
+        drx.loadGrammarRules(results.data);
+        updateTable();
+    }
+});
+
+Papa.parse('grammars/expression.csv', {
+    header: true,
+    download: true,
+    complete: function(results) {
+        drx.loadGrammarRules(results.data);
+        updateTable();
     }
 });
