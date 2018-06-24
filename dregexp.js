@@ -1,6 +1,6 @@
 class DRegExp {
 
-    constructor() {
+    constructor(flags = {}) {
         this.nodeTypes = ['?']; // the first nodeType is a special one for unrecognized characters
         this.nodeTypeIds = {'?':0};
         this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
@@ -8,11 +8,16 @@ class DRegExp {
         this.grammarRules = {};
         this.tokenizerNodeTypes = [];
         this.parserNodeTypes = {};
+        this.flags = flags;
     }
 
     loadGrammarRules(csvInputArrayOfHashes) {
         let nodeTypeId = this.nodeTypes.length;
         for (let rule of csvInputArrayOfHashes) {
+            if (!rule.nodetype) {
+                // skip empty lines
+                continue;
+            }
             let nodeType = this.validateName(rule.nodetype);
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
                 throw new Error('nodeType ' + nodeType + ' is already declared as a nodeGroup');
@@ -54,11 +59,9 @@ class DRegExp {
                 throw new Error('parser undefined');
             }
             if (rule.tokenizepattern && !rule.parsepattern) {
-                console.log('tokenize nodeType: ' + nodeType);
                 allTokenizeNodeTypes.push(nodeType);
                 tokenizeSubNodeTypes = this.extractNodeTypes(tokenizeSubNodeTypes, rule.tokenizepattern);
             } else if (!rule.tokenizepattern && rule.parsepattern) {
-                console.log('parse nodeType: ' + nodeType);
                 if (!this.parserNodeTypes.hasOwnProperty(parser)) {
                     this.parserNodeTypes[parser] = [];
                 }
@@ -70,7 +73,7 @@ class DRegExp {
                 }
                 parseSubNodeTypes = this.extractNodeTypes(parseSubNodeTypes, rule.parsepattern);
             } else  {
-                throw new Error('invalid grammar rule: ' + JSON.stringify(rule));
+                throw new Error('invalid grammar rule: ' + JSON.stringify(rule,null,4));
             }
         }
 
@@ -116,9 +119,17 @@ class DRegExp {
     tokenizeRegExp() {
         let tokenRegexes = [];
         for (let nodeType of this.tokenizerNodeTypes) {
-            tokenRegexes.push(this.expandTokenizePattern(nodeType));
+            let re = this.expandTokenizePattern(nodeType);
+            tokenRegexes.push(re);
+            if (this.flags.debug) {
+                console.log(nodeType + ' : ' + re)
+                // Test if the regexp is valid
+                // to get the error for the nodeType
+                // instead of an error for the entire combined regexp:
+                RegExp(re, 'u');
+            }
         }
-        return new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))');
+        return new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))', 'u');
     }
 
     parseRegExp(nodeTypes, errorRecovery) {
@@ -158,7 +169,7 @@ class DRegExp {
                 }
                 matched = true;
                 if (invalidString.length > 0) {
-                    console.warn('unable to tokenize: ' + invalidString);
+                    console.warn('unable to tokenize: "' + invalidString + '"');
                     tokenNodes.push(['?', invalidString]);
                     invalidString = '';
                 }
@@ -225,7 +236,6 @@ class DRegExp {
                     let subNodeId = subNode[2];
                     subNodes.push(tokenNodes[subNodeId]);
                     subNodeString = subNodeString.replace(subNode[0], '');
-                    console.log(subNodeType + subNodeId + ' -> ' + nodeType + nodeId);
                 }
                 let subParser = this.grammarRules[nodeType].subparser;
                 if (subParser) {
@@ -237,7 +247,6 @@ class DRegExp {
                 break;
             }
         }
-        console.log('nodeString: ' + nodeString);
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {
             let subNodes = [];
             while (nodeString.length > 0) {
@@ -276,6 +285,9 @@ class DRegExp {
             throw new Error('cycle detected: ' + nodeType);
         }
         visited.push(nodeType);
+        if (!this.grammarRules[nodeType]) {
+            throw new Error('no grammarRule for nodeType: ' + nodeType);
+        }
         let tokenizePattern = this.grammarRules[nodeType].tokenizepattern;
         if (!tokenizePattern) {
             throw new Error('no tokenizepattern for nodeType: ' + nodeType);
@@ -358,3 +370,5 @@ class DRegExp {
     }
 
 }
+
+module.exports = DRegExp;
