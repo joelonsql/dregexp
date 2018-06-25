@@ -22,14 +22,17 @@
         <h1>Demo of dregexp</h1>
         <div>Check out View -> Developer -> Develope Tools -> Console</div>
         <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">
-extern crate same_file;
-/* foo */
-// bar
+struct G<S,T>{x:S,y:T}
+fn f<S,T>(){let x: S; let y: T;}
+fn g(a: bool, b: bool) {}
+struct A {}
+struct B {}
 fn main() {
-    if let Err(err) = run() {
-        println!("{}", err);
-        process::exit(1);
-    }
+    let S: i32 = 1;
+    let T: i32 = 2;
+    let E: i32 = 5;
+    g(E < S, T > 3);
+    f::< G<A, B>, i32 >();
 }
         </textarea>
         <br/>

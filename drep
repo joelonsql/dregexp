@@ -1,0 +1,78 @@
+#!/usr/local/bin/node
+let fs = require('fs');
+let DRegExp = require('./dregexp');
+let Papa = require('./papaparse');
+
+let grammarDir = './grammars/';
+let opts = {};
+let args = process.argv.slice(2);
+let codePattern;
+let sourceCodeFile;
+while (true) {
+    let arg = args.shift();
+    if (arg == null) {
+        break;
+    } else if (arg.match('^-[ABg]')) {
+        opts[arg] = args.shift();
+    } else if (codePattern == null) {
+        codePattern = arg;
+    } else if (sourceCodeFile == null) {
+        sourceCodeFile = arg;
+    }
+}
+
+if (codePattern == null || sourceCodeFile == null) {
+    console.log('Usage: drep [-g grammar csv file] [-A num] [-B num] [code pattern] [source code file]');
+    return;
+} else if (!fs.existsSync(sourceCodeFile)) {
+    console.error('File does not exist: ' + sourceCodeFile);
+    return;
+}
+
+let csvGrammarFile;
+let suffixes = {'rs': 'rust'};
+let suffix = sourceCodeFile.match(/\.([^.]+)$/);
+if (opts['-g']) {
+    csvGrammarFile = opts['-g'];
+} else if (suffix && suffixes.hasOwnProperty(suffix[1])) {
+    csvGrammarFile = grammarDir + suffixes[suffix[1]] + '.csv';
+} else {
+    console.error('Unknown file suffix: ' + sourceCodeFile);
+    process.exit(1);
+}
+
+let sourceCode = fs.readFileSync(sourceCodeFile, 'utf8');
+
+let drx = new DRegExp();
+drx.loadGrammarRules(Papa.parse(fs.readFileSync(csvGrammarFile, 'utf8'), {header: true}).data);
+
+let tokens = {
+    'needle': drx.tokenize(codePattern),
+    'haystack': drx.tokenize(sourceCode)
+};
+
+let tokenTypes = {};
+let tokenValues = {};
+
+for (let k in tokens) {
+    let tTypes = [];
+    let tValues = [];
+    for (let t of tokens[k]) {
+        if (t[0].match(/^WhiteSpace$|Comment$/)) {
+            continue;
+        }
+        tTypes.push(t[0]);
+        tValues.push(t[1]);
+    }
+    tokenTypes[k] = tTypes;
+    tokenValues[k] = tValues;
+}
+
+let before = opts['-B']*1 || 0;
+let after = opts['-A']*1 || 0;
+let len = tokenTypes['needle'].length;
+for (let i=0; i < tokenTypes['haystack'].length - len; i++) {
+    if ( JSON.stringify(tokenTypes['haystack'].slice(i,i+len)) == JSON.stringify(tokenTypes['needle']) ) {
+        console.log(tokenValues['haystack'].slice(i-before,i+len+after).join(' '));
+    }
+}
