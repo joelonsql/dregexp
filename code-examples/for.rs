@@ -10,6 +10,8 @@ fn main() {
        }
     */
 
+    let for_ = 123;
+
     let mystr = r#"this looks like a for i in 1..100 { println("{}", i); } loop but is not one"#;
     println!("{}", mystr);
 

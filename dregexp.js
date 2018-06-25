@@ -9,14 +9,18 @@ class DRegExp {
         this.tokenizerNodeTypes = [];
         this.parserNodeTypes = {};
         this.flags = flags;
+        this.mainParser = null;
     }
 
     loadGrammarRules(csvInputArrayOfHashes) {
         let nodeTypeId = this.nodeTypes.length;
         for (let rule of csvInputArrayOfHashes) {
-            if (!rule.nodetype) {
+            let parser = rule.parser;
+            if (!parser) {
                 // skip empty lines
                 continue;
+            } else if (this.mainParser == null) {
+                this.mainParser = parser;
             }
             let nodeType = this.validateName(rule.nodetype);
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
@@ -43,8 +47,9 @@ class DRegExp {
     }
 
     processGrammarRules() {
-        this.tokenizerNodeTypes = [];
+        this.tokenizerNodeTypes = {};
         this.parserNodeTypes = {};
+        let tokenizerNodeTypes = {};
         let allTokenizeNodeTypes = [];
         let tokenizeSubNodeTypes = [];
         let parseSubNodeTypes = [];
@@ -61,6 +66,9 @@ class DRegExp {
             if (rule.tokenizepattern && !rule.parsepattern) {
                 allTokenizeNodeTypes.push(nodeType);
                 tokenizeSubNodeTypes = this.extractNodeTypes(tokenizeSubNodeTypes, rule.tokenizepattern);
+                if (!tokenizerNodeTypes.hasOwnProperty(parser)) {
+                    tokenizerNodeTypes[parser] = [];
+                }
             } else if (!rule.tokenizepattern && rule.parsepattern) {
                 if (!this.parserNodeTypes.hasOwnProperty(parser)) {
                     this.parserNodeTypes[parser] = [];
@@ -77,12 +85,12 @@ class DRegExp {
             }
         }
 
-        let tokenizerNodeTypes = [];
         if (parseSubNodeTypes.length > 0) {
             // Filter out node types that don't appear in any parse pattern.
             for (let nodeType of allTokenizeNodeTypes) {
+                let parser = this.grammarRules[nodeType].parser;
                 if (parseSubNodeTypes.includes(nodeType)) {
-                    tokenizerNodeTypes.push(nodeType);
+                    tokenizerNodeTypes[parser].push(nodeType);
                 } else if (!tokenizeSubNodeTypes.includes(nodeType)) {
                     console.warn('unused nodeType: ' + nodeType);
                 }
@@ -91,8 +99,9 @@ class DRegExp {
             // Filter out node types that appear in tokenize patterns,
             // as such node types are only regexp "fragments".
             for (let nodeType of allTokenizeNodeTypes) {
+                let parser = this.grammarRules[nodeType].parser;
                 if (!tokenizeSubNodeTypes.includes(nodeType)) {
-                    tokenizerNodeTypes.push(nodeType);
+                    tokenizerNodeTypes[parser].push(nodeType);
                 }
             }
         }
@@ -116,18 +125,18 @@ class DRegExp {
         return nodeTypes;
     }
 
-    tokenizeRegExp() {
+    tokenizeRegExp(parser) {
         let tokenRegexes = [];
-        for (let nodeType of this.tokenizerNodeTypes) {
+        for (let nodeType of this.tokenizerNodeTypes[parser]) {
             let re = this.expandTokenizePattern(nodeType);
             tokenRegexes.push(re);
             if (this.flags.debug) {
                 console.log(nodeType + ' : ' + re)
-                // Test if the regexp is valid
-                // to get the error for the nodeType
-                // instead of an error for the entire combined regexp:
-                RegExp(re, 'u');
             }
+            // Test if the regexp is valid
+            // to get the error for the nodeType
+            // instead of an error for the entire combined regexp:
+            RegExp(re, 'u');
         }
         return new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))', 'u');
     }
@@ -147,25 +156,33 @@ class DRegExp {
         return nodeType;
     }
 
-    tokenize(inputString) {
+    tokenize(inputString, parser) {
+        if (parser == null) {
+            parser = this.mainParser;            
+        }
+        if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
+            throw new Error('no rules defined for parser: ' + parser);
+        }
+        let tokenizerNodeTypes = this.tokenizerNodeTypes[parser];
         let tokenNodes = [];
         let invalidString = '';
-        let re = this.tokenizeRegExp();
+        let re = this.tokenizeRegExp(parser);
         while (inputString.length > 0) {
             let m = inputString.match(re);
             if (m == null) {
                 invalidString += inputString.charAt(0);
                 inputString = inputString.slice(1);
                 continue;
-            } else if (m.length != this.tokenizerNodeTypes.length + 1) {
+            } else if (m.length != tokenizerNodeTypes.length + 1) {
                 throw new Error('different number of capture groups than token node types');
             }
             let matched = false;
-            for (let i=0; i < this.tokenizerNodeTypes.length; i++) {
+            for (let i=0; i < tokenizerNodeTypes.length; i++) {
+                let nodeType = tokenizerNodeTypes[i];
                 if (m[i+1] == null) {
                     continue;
                 } else if (matched) {
-                    throw new Error('multiple capture groups matched: ' + this.tokenizerNodeTypes[i]);
+                    throw new Error('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
                 }
                 matched = true;
                 if (invalidString.length > 0) {
@@ -173,7 +190,12 @@ class DRegExp {
                     tokenNodes.push(['?', invalidString]);
                     invalidString = '';
                 }
-                tokenNodes.push([this.tokenizerNodeTypes[i], m[i+1]]);
+                let subParser = this.grammarRules[nodeType].subparser;
+                if (subParser) {
+                    tokenNodes = tokenNodes.concat(this.tokenize(m[i+1], subParser));
+                } else {
+                    tokenNodes.push([nodeType, m[i+1]]);
+                }
                 inputString = inputString.slice(m[i+1].length);
             }
         }
@@ -184,7 +206,10 @@ class DRegExp {
         return tokenNodes;
     }
 
-    parse(parser, tokenNodes) {
+    parse(tokenNodes, parser) {
+        if (parser == null) {
+            parser = this.mainParser;            
+        }
         if (!this.parserNodeTypes.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }

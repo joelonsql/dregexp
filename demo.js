@@ -30,7 +30,7 @@ function parseAndDrawTree() {
 
         let parseTree = ['Rust', tokenNodes];
 
-        // let parseTree = drx.parse('Rust', tokenNodes);
+        // let parseTree = drx.parse(tokenNodes);
         // if (eliminateUselessNodes) {
         //     parseTree = drx.eliminateNodes(parseTree);
         // }
