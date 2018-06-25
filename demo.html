@@ -21,20 +21,7 @@
     <body>
         <h1>Demo of dregexp</h1>
         <div>Check out View -> Developer -> Develope Tools -> Console</div>
-        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">
-struct G<S,T>{x:S,y:T}
-fn f<S,T>(){let x: S; let y: T;}
-fn g(a: bool, b: bool) {}
-struct A {}
-struct B {}
-fn main() {
-    let S: i32 = 1;
-    let T: i32 = 2;
-    let E: i32 = 5;
-    g(E < S, T > 3);
-    f::< G<A, B>, i32 >();
-}
-        </textarea>
+        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">{"foo":{"bar":[1,2,3]}}</textarea>
         <br/>
         <input type="checkbox" id="eliminateUselessNodes" onchange="parseAndDrawTree()" checked="checked"/>Eliminate useless nodes
         <br/>

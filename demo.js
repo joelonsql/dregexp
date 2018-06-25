@@ -28,14 +28,12 @@ function parseAndDrawTree() {
         let tokenNodes = drx.tokenize(inputString);
         console.log('tokenNodes: ' + tokenNodes);
 
-        let parseTree = ['Rust', tokenNodes];
-
-        // let parseTree = drx.parse(tokenNodes);
-        // if (eliminateUselessNodes) {
-        //     parseTree = drx.eliminateNodes(parseTree);
-        // }
-        // console.log('parseTree:');
-        // console.log(parseTree);
+        let parseTree = drx.parse(tokenNodes);
+        if (eliminateUselessNodes) {
+            parseTree = drx.eliminateNodes(parseTree);
+        }
+        console.log('parseTree:');
+        console.log(parseTree);
 
         // The code below is only necessary to draw the tree diagram
         // using the third-party library Treant.js
@@ -69,7 +67,7 @@ function parseAndDrawTree() {
         new Treant( simple_chart_config );
 }
 
-Papa.parse('grammars/rust.csv', {
+Papa.parse('grammars/json.csv', {
     header: true,
     download: true,
     complete: function(results) {
