@@ -127,18 +127,31 @@ class DRegExp {
 
     tokenizeRegExp(parser) {
         let tokenRegexes = [];
+        let captureGroups = {};
+        let offset = 1;
+        let i = 0;
         for (let nodeType of this.tokenizerNodeTypes[parser]) {
+            captureGroups[i++] = offset;
             let re = this.expandTokenizePattern(nodeType);
+            RegExp(re, 'u'); // test if it's valid to spot errors early
+            let o = this.offsetCaptureGroups(offset, re);
+            offset = o.offset+1;
+            re = o.re;
             tokenRegexes.push(re);
             if (this.flags.debug) {
                 console.log(nodeType + ' : ' + re)
             }
-            // Test if the regexp is valid
-            // to get the error for the nodeType
-            // instead of an error for the entire combined regexp:
-            RegExp(re, 'u');
         }
-        return new RegExp('^(?:(' + tokenRegexes.join(')|(') + '))', 'u');
+        let re = '^(?:(' + tokenRegexes.join(')|(') + '))';
+        if (this.flags.debug) {
+            process.stdout.write("\n");
+            process.stdout.write(re);
+            process.stdout.write("\n");
+        }
+        return {
+            'captureGroups': captureGroups,
+            'regexp': new RegExp(re, 'u')
+        }
     }
 
     parseRegExp(nodeTypes, errorRecovery) {
@@ -168,18 +181,17 @@ class DRegExp {
         let invalidString = '';
         let re = this.tokenizeRegExp(parser);
         while (inputString.length > 0) {
-            let m = inputString.match(re);
+            let m = inputString.match(re.regexp);
             if (m == null) {
                 invalidString += inputString.charAt(0);
                 inputString = inputString.slice(1);
                 continue;
-            } else if (m.length != tokenizerNodeTypes.length + 1) {
-                throw new Error('different number of capture groups than token node types');
             }
             let matched = false;
             for (let i=0; i < tokenizerNodeTypes.length; i++) {
                 let nodeType = tokenizerNodeTypes[i];
-                if (m[i+1] == null) {
+                let matchedStr = m[re.captureGroups[i]];
+                if (matchedStr == null) {
                     continue;
                 } else if (matched) {
                     throw new Error('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
@@ -192,11 +204,11 @@ class DRegExp {
                 }
                 let subParser = this.grammarRules[nodeType].subparser;
                 if (subParser) {
-                    tokenNodes = tokenNodes.concat(this.tokenize(m[i+1], subParser));
+                    tokenNodes = tokenNodes.concat(this.tokenize(matchedStr, subParser));
                 } else {
-                    tokenNodes.push([nodeType, m[i+1]]);
+                    tokenNodes.push([nodeType, matchedStr]);
                 }
-                inputString = inputString.slice(m[i+1].length);
+                inputString = inputString.slice(matchedStr.length);
             }
         }
         if (invalidString.length > 0) {
@@ -393,6 +405,23 @@ class DRegExp {
         }
         return reducedTree;
     }
+
+    offsetCaptureGroups(offset, re) {
+        let captureGroups = re.match(/(^|[^\\])(\\\\)*\([^?]/g) || [];
+        let numCaptureGroups = captureGroups.length;
+        let backReferences = re.match(/(^|[^\\])(\\\\)*\\\d+/g) || [];
+        let numBackReferences = backReferences.length;
+        if (numCaptureGroups != numBackReferences) {
+            throw new Error('Number of capture groups in regexp (' + re + ') not equal to number of back references: ' + numCaptureGroups + ' != ' + numBackReferences);
+        }
+        for (let backRef of backReferences) {
+            let refNum = backRef.match(/\d+$/)[0];
+            let newBackRef = backRef.replace(refNum, (parseInt(refNum) + offset).toString());
+            re = re.replace(backRef, newBackRef);
+        }
+        return {'offset': offset+numCaptureGroups, 're': re};
+    }
+
 
 }
 
