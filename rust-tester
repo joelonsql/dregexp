@@ -1,0 +1,87 @@
+#!/usr/local/bin/node
+const { execSync } = require('child_process');
+let fs = require('fs');
+let DRegExp = require('./dregexp');
+let Papa = require('./papaparse');
+let rustc_ast_json = require('./rustc_ast_json');
+
+let sourceFile = process.argv[2];
+let csvGrammarFile = './grammars/rust.csv';
+
+if (sourceFile == null) {
+    console.log('Usage: rust-tester [filename.rs]');
+    return;
+} else if (!fs.existsSync(sourceFile)) {
+    console.error('File does not exist: ' + sourceFile);
+    return;
+}
+
+let sourceCodeString = fs.readFileSync(sourceFile, 'utf8');
+
+let drx = new DRegExp();
+drx.loadGrammarRules(Papa.parse(fs.readFileSync(csvGrammarFile, 'utf8'), {header: true}).data);
+let tokens;
+try {
+    tokens = drx.tokenize(sourceCodeString, {throwOnError: false});
+} catch (e) {
+    // tokenize failed
+    tokens = null;
+}
+
+// The -Zast-json-noexpand option is only available for the "nightly" rust version.
+let AST;
+try {
+    AST = JSON.parse(execSync('rustc -Zast-json-noexpand ' + sourceFile, {timeout: 1000, stdio: ['ignore', 'pipe', 'ignore']}));
+} catch (e) {
+    // rustc failed
+    AST = null;
+}
+
+if (tokens == null && AST == null) {
+    console.log('ok ' + sourceFile + ' (both failed)');
+    process.exit(0);
+} else if (tokens == null) {
+    console.log('not ok ' + sourceFile + ' (DRegExp tokenizer failed)');
+    process.exit(1);
+} else if (AST == null) {
+    console.log('not ok ' + sourceFile + ' (rustc failed)');
+    process.exit(1);
+}
+
+let raj = new rustc_ast_json();
+let expectedTokens = raj.tokenize(AST, sourceCodeString);
+
+let concattedTokens = '';
+let resultTokens = [];
+for (let t of tokens) {
+    concattedTokens += t[1];
+    if (t[0].match(/^(WhiteSpace|LineComment|BlockComment)$/)) {
+        continue;
+    }
+    resultTokens.push(t);
+}
+
+let ok = true;
+while (true) {
+    let t1 = expectedTokens.shift();
+    let t2 = resultTokens.shift();
+    if (!t1 && !t2) {
+        break;
+    } else if (t1[0] == t2[0] && t1[1] == t2[1]) {
+        // ok
+    } else if (t1[0] == 'Ident' && t1[1] == t2[0] && drx.tokenizerNodeTypes['Keyword'].includes(t1[1])) {
+        // ok, rustc's don't deal with keywords in the first step, they are of type "Ident"
+    } else if (t1[0] == 'Integer' && t2[0] == 'Float' && t1[1] == t2[1] && t1[1].match(/^\d+f(32|64)$/)) {
+        // ok, rustc will tokenize e.g. "123f64" as an "Integer" even though it has the float suffix.
+    } else {
+        ok = false;
+        console.log(JSON.stringify(t1) + ' != ' + JSON.stringify(t2));
+    }
+}
+
+if (!ok) {
+    console.error('not ok ' + sourceFile);
+    process.exit(1);
+}
+
+console.log('ok ' + sourceFile);

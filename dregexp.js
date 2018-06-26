@@ -149,8 +149,8 @@ class DRegExp {
             process.stdout.write("\n");
         }
         return {
-            'captureGroups': captureGroups,
-            'regexp': new RegExp(re, 'u')
+            captureGroups: captureGroups,
+            regexp: new RegExp(re, 'u')
         }
     }
 
@@ -169,10 +169,8 @@ class DRegExp {
         return nodeType;
     }
 
-    tokenize(inputString, parser) {
-        if (parser == null) {
-            parser = this.mainParser;            
-        }
+    tokenize(inputString, options = {}) {
+        let parser = options.parser || this.mainParser;
         if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
@@ -198,13 +196,15 @@ class DRegExp {
                 }
                 matched = true;
                 if (invalidString.length > 0) {
-                    console.warn('unable to tokenize: "' + invalidString + '"');
+                    if (options.throwOnError) {
+                        throw new Error('unable to tokenize: "' + invalidString + '"');
+                    }
                     tokenNodes.push(['?', invalidString]);
                     invalidString = '';
                 }
                 let subParser = this.grammarRules[nodeType].subparser;
                 if (subParser) {
-                    tokenNodes = tokenNodes.concat(this.tokenize(matchedStr, subParser));
+                    tokenNodes = tokenNodes.concat(this.tokenize(matchedStr, Object.assign(options, {parser: subParser})));
                 } else {
                     tokenNodes.push([nodeType, matchedStr]);
                 }
@@ -212,16 +212,16 @@ class DRegExp {
             }
         }
         if (invalidString.length > 0) {
-            console.warn('unable to tokenize: ' + invalidString);
+            if (options.throwOnError) {
+                throw new Error('unable to tokenize: "' + invalidString + '"');
+            }
             tokenNodes.push(['?', invalidString]);
         }
         return tokenNodes;
     }
 
-    parse(tokenNodes, parser) {
-        if (parser == null) {
-            parser = this.mainParser;            
-        }
+    parse(tokenNodes, options = {}) {
+        let parser = options.parser || this.mainParser;
         if (!this.parserNodeTypes.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
@@ -230,7 +230,7 @@ class DRegExp {
         let errorRecovery = '';
         for (let node of tokenNodes) {
             nodeString += this.encodeNodeType(node[0]) + nodeId++ + ',';
-            if (node[0] == '?') {
+            if (node[0] == '?' && !options.throwOnError) {
                 errorRecovery = '(?:' + this.encodeNodeType('?') + '\\d+,)?';
             }
         }
@@ -276,7 +276,7 @@ class DRegExp {
                 }
                 let subParser = this.grammarRules[nodeType].subparser;
                 if (subParser) {
-                    tokenNodes[nodeId++] = this.parse(subParser, subNodes);
+                    tokenNodes[nodeId++] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
                 } else {
                     tokenNodes[nodeId++] = [nodeType, subNodes];
                 }
@@ -285,6 +285,9 @@ class DRegExp {
             }
         }
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {
+            if (options.throwOnError) {
+                throw new Error('unable to parse: ' + nodeString);
+            }
             let subNodes = [];
             while (nodeString.length > 0) {
                 let subNode = nodeString.match(/([가-판])(\d+),/u);
@@ -419,7 +422,7 @@ class DRegExp {
             let newBackRef = backRef.replace(refNum, (parseInt(refNum) + offset).toString());
             re = re.replace(backRef, newBackRef);
         }
-        return {'offset': offset+numCaptureGroups, 're': re};
+        return {offset: offset+numCaptureGroups, re: re};
     }
 
 
