@@ -142,7 +142,7 @@ class DRegExp {
                 console.log(nodeType + ' : ' + re)
             }
         }
-        let re = '^(?:(' + tokenRegexes.join(')|(') + '))';
+        let re = '^(' + tokenRegexes.join(')|(') + ')';
         if (this.flags.debug) {
             process.stdout.write("\n");
             process.stdout.write(re);
@@ -170,21 +170,30 @@ class DRegExp {
     }
 
     tokenize(inputString, options = {}) {
+        this.tokenNodes = [];
+        this._tokenize(inputString, options);
+        return this.tokenNodes;
+    }
+
+    _tokenize(inputString, options) {
         let parser = options.parser || this.mainParser;
         if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
         let tokenizerNodeTypes = this.tokenizerNodeTypes[parser];
-        let tokenNodes = [];
-        let invalidString = '';
         let re = this.tokenizeRegExp(parser);
-        while (inputString.length > 0) {
-            let m = inputString.match(re.regexp);
-            if (m == null) {
-                invalidString += inputString.charAt(0);
-                inputString = inputString.slice(1);
-                continue;
+        let rx = re.regexp;
+        let m;
+        let lastIndex = 0;
+        while (m = rx.exec(inputString)) {
+            if (m.index > lastIndex) {
+                let invalidString = inputString.slice(lastIndex, m.index);
+                if (options.throwOnError) {
+                    throw new Error('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
+                }
+                this.tokenNodes.push(['?', invalidString]);
             }
+            lastIndex = rx.lastIndex;
             let matched = false;
             for (let i=0; i < tokenizerNodeTypes.length; i++) {
                 let nodeType = tokenizerNodeTypes[i];
@@ -195,29 +204,22 @@ class DRegExp {
                     throw new Error('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
                 }
                 matched = true;
-                if (invalidString.length > 0) {
-                    if (options.throwOnError) {
-                        throw new Error('unable to tokenize: "' + invalidString + '"');
-                    }
-                    tokenNodes.push(['?', invalidString]);
-                    invalidString = '';
-                }
                 let subParser = this.grammarRules[nodeType].subparser;
                 if (subParser) {
-                    tokenNodes = tokenNodes.concat(this.tokenize(matchedStr, Object.assign(options, {parser: subParser})));
+                    this._tokenize(matchedStr, Object.assign(options, {parser: subParser}));
                 } else {
-                    tokenNodes.push([nodeType, matchedStr]);
+                    this.tokenNodes.push([nodeType, matchedStr]);
                 }
                 inputString = inputString.slice(matchedStr.length);
             }
         }
-        if (invalidString.length > 0) {
+        if (inputString.length > lastIndex) {
+            let invalidString = inputString.slice(lastIndex, inputString.length);
             if (options.throwOnError) {
-                throw new Error('unable to tokenize: "' + invalidString + '"');
+                throw new Error('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
             }
-            tokenNodes.push(['?', invalidString]);
+            this.tokenNodes.push(['?', invalidString]);
         }
-        return tokenNodes;
     }
 
     parse(tokenNodes, options = {}) {

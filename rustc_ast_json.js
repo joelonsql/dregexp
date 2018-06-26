@@ -27,14 +27,14 @@ class rustc_ast_json{
         // Some token types cannot be derived since they don't exist in the ast_json-data
         // and therefore need to be hard-coded manually:
         this.tokenTypes = {
-            'Pound' : '#',
-            'Not' : '!',
-            'LBrace' : '{',
-            'RBrace' : '}',
-            'LParen' : '(',
-            'RParen' : ')',
-            'LBracket' : '[',
-            'RBracket' : ']',
+            Pound: '#',
+            Not: '!',
+            LBrace: '{',
+            RBrace: '}',
+            LParen: '(',
+            RParen: ')',
+            LBracket: '[',
+            RBracket: ']',
         };
         // Detect if there is a magic byte-order-mark sequence in the beginning of the file:
         let BOM = null;
@@ -66,9 +66,13 @@ class rustc_ast_json{
         }
         for (let modPos in this.mods) {
             if (!this.idents.hasOwnProperty(modPos)) {
-                this.tokens[modPos] = ['Ident', 'mod'];
-                this.tokens[modPos*1+5] = ['Ident', this.mods[modPos].ident];
-                this.tokens[modPos*1+6] = ['LBrace', '{'];
+                let modPosOffset = parseInt(modPos);
+                if (this.mods[modPos].pub) {
+                    this.tokens[modPosOffset] = ['Ident', 'pub']; modPosOffset += 3+1;
+                }
+                this.tokens[modPosOffset] = ['Ident', 'mod']; modPosOffset += 3+1;
+                this.tokens[modPosOffset] = ['Ident', this.mods[modPos].ident]; modPosOffset += this.mods[modPos].ident.length + 1;
+                this.tokens[modPosOffset] = ['LBrace', '{']; modPosOffset += 1;
                 this.tokens[this.mods[modPos].hi*1-1] = ['RBrace', '}'];
             }
         }
@@ -134,7 +138,7 @@ class rustc_ast_json{
             }
         } else if (AST.constructor === Object) {
             if (AST.node && AST.node && AST.node.variant == 'Mod' && AST.ident != '' && AST.span) {
-                this.mods[AST.span.lo] = {'ident': AST.ident, 'hi': AST.span.hi};
+                this.mods[AST.span.lo] = {ident: AST.ident, hi: AST.span.hi, pub: AST.vis.node == 'Public' };
             }
             if (AST.variant == 'Token' && typeof AST.fields[1] === 'string') {
                 this.newToken(AST.fields[1], AST.fields[0]);
@@ -201,7 +205,7 @@ class rustc_ast_json{
                 && AST.tokens
             ) {
                 if (!AST.is_sugared_doc) {
-                    this.attribs[AST.path.span.lo] = {'style': AST.style, 'lo': AST.span.lo, 'hi': AST.span.hi};
+                    this.attribs[AST.path.span.lo] = {style: AST.style, lo: AST.span.lo, hi: AST.span.hi};
                     this.newToken('Ident', AST.path.span);
                 }
                 this.traverse(AST.tokens, path + '[tokens]');
