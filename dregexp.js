@@ -142,7 +142,7 @@ class DRegExp {
                 console.log(nodeType + ' : ' + re)
             }
         }
-        let re = '^(' + tokenRegexes.join(')|(') + ')';
+        let re = '(' + tokenRegexes.join(')|(') + ')';
         if (this.flags.debug) {
             process.stdout.write("\n");
             process.stdout.write(re);
@@ -150,7 +150,7 @@ class DRegExp {
         }
         return {
             captureGroups: captureGroups,
-            regexp: new RegExp(re, 'u')
+            regexp: new RegExp(re, 'ug')
         }
     }
 
@@ -159,7 +159,7 @@ class DRegExp {
         for (let nodeType of nodeTypes) {
             parseRegexes.push(this.expandParsePattern(nodeType, errorRecovery));
         }
-        return new RegExp(parseRegexes.join('|'));
+        return new RegExp(parseRegexes.join('|'), 'ug');
     }
 
     validateName(nodeType) {
@@ -189,7 +189,7 @@ class DRegExp {
             if (m.index > lastIndex) {
                 let invalidString = inputString.slice(lastIndex, m.index);
                 if (options.throwOnError) {
-                    throw new Error('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
+                    throw new Error('unable to tokenize ' + (m.index - lastIndex) + ' chars at pos ' + lastIndex + ' : "' + invalidString + '"');
                 }
                 this.tokenNodes.push(['?', invalidString]);
             }
@@ -210,7 +210,6 @@ class DRegExp {
                 } else {
                     this.tokenNodes.push([nodeType, matchedStr]);
                 }
-                inputString = inputString.slice(matchedStr.length);
             }
         }
         if (inputString.length > lastIndex) {
@@ -241,49 +240,64 @@ class DRegExp {
             for (let percedenceGroup of this.parserNodeTypes[parser]) {
                 let nodeType = null;
                 let re = this.parseRegExp(percedenceGroup.nodeTypes, errorRecovery);
-                let m = nodeString.match(re);
-                if (m == null) {
-                    continue;
-                } else if (m.length != percedenceGroup.nodeTypes.length + 1) {
-                    throw new Error('different number of capture groups than node types for given precedence');
-                }
-
-                let matched = false;
-                let subNodeString = null;
-                for (let i=0; i < percedenceGroup.nodeTypes.length; i++) {
-                    if (m[i+1] == null) {
-                        continue;
-                    } else if (matched) {
-                        throw new Error('multiple capture groups matched for percedence "' + percedenceGroup.percedence + '" : ' + percedenceGroup.nodeTypes[i]);
+                let m;
+                let lastIndex = 0;
+                let newNodeString = '';
+                while (m = re.exec(nodeString)) {
+                    if (m.length != percedenceGroup.nodeTypes.length + 1) {
+                        throw new Error('different number of capture groups than node types for given precedence');
+                    } else if (m.index > lastIndex) {
+                        newNodeString += nodeString.slice(lastIndex, m.index);
                     }
-                    matched = true;
-                    subNodeString = m[i+1];
-                    nodeType = percedenceGroup.nodeTypes[i];
-                }
-                if (!matched) {
-                    throw new Error('no capture group matched: ' + percedenceGroup.percedence);
-                }
-
-                nodeString = nodeString.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
-                let subNodes = [];
-                while (subNodeString.length > 0) {
-                    let subNode = subNodeString.match(/([가-판])(\d+),/u); // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
-                    if (subNode == null) {
+                    lastIndex = re.lastIndex;
+                    let matched = false;
+                    let matchedStr = m[0];
+                    let subNodeString = null;
+                    for (let i=0; i < percedenceGroup.nodeTypes.length; i++) {
+                        if (m[i+1] == null) {
+                            continue;
+                        } else if (matched) {
+                            throw new Error('multiple capture groups matched for percedence "' + percedenceGroup.percedence + '" : ' + percedenceGroup.nodeTypes[i]);
+                        }
+                        matched = true;
+                        subNodeString = m[i+1];
+                        nodeType = percedenceGroup.nodeTypes[i];
+                    }
+                    if (!matched) {
+                        throw new Error('no capture group matched: ' + percedenceGroup.percedence);
+                    }
+                    matchedStr = matchedStr.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
+                    newNodeString += matchedStr;
+                    let subNodes = [];
+                    let subLastIndex = 0;
+                    let subNode;
+                    let subRegexp = /([가-판])(\d+),/ug; // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
+                    while (subNode = subRegexp.exec(subNodeString)) {
+                        if (subNode.index > subLastIndex) {
+                            throw new Error('did not match immediately after previous match');
+                        }
+                        let subNodeType = this.decodeNodeType(subNode[1]);
+                        let subNodeId = subNode[2];
+                        subNodes.push(tokenNodes[subNodeId]);
+                        subLastIndex = subRegexp.lastIndex;
+                    }
+                    if (subNodes.length == 0) {
                         throw new Error('unable to parse: ' + subNodeString);
                     }
-                    let subNodeType = this.decodeNodeType(subNode[1]);
-                    let subNodeId = subNode[2];
-                    subNodes.push(tokenNodes[subNodeId]);
-                    subNodeString = subNodeString.replace(subNode[0], '');
+                    let subParser = this.grammarRules[nodeType].subparser;
+                    if (subParser) {
+                        tokenNodes[nodeId++] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
+                    } else {
+                        tokenNodes[nodeId++] = [nodeType, subNodes];
+                    }
+                    didWork = true;
                 }
-                let subParser = this.grammarRules[nodeType].subparser;
-                if (subParser) {
-                    tokenNodes[nodeId++] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
-                } else {
-                    tokenNodes[nodeId++] = [nodeType, subNodes];
+                if (lastIndex > 0) {
+                    if (nodeString.length > lastIndex) {
+                        newNodeString += nodeString.slice(lastIndex, nodeString.length);
+                    }
+                    nodeString = newNodeString;
                 }
-                didWork = true;
-                break;
             }
         }
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {

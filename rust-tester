@@ -22,7 +22,7 @@ let drx = new DRegExp();
 drx.loadGrammarRules(Papa.parse(fs.readFileSync(csvGrammarFile, 'utf8'), {header: true}).data);
 let tokens;
 try {
-    tokens = drx.tokenize(sourceCodeString, {throwOnError: false});
+    tokens = drx.tokenize(sourceCodeString, {throwOnError: true});
 } catch (e) {
     // tokenize failed
     console.error(e);
