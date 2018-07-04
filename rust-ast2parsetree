@@ -1,0 +1,29 @@
+#!/usr/local/bin/node
+const { execSync } = require('child_process');
+let fs = require('fs');
+let rustc_ast_json = require('./rustc_ast_json');
+
+let sourceFile = process.argv[2];
+
+if (sourceFile == null) {
+    console.log('Usage: rust-tester [filename.rs]');
+    return;
+} else if (!fs.existsSync(sourceFile)) {
+    console.error('File does not exist: ' + sourceFile);
+    return;
+}
+
+let sourceCodeString = fs.readFileSync(sourceFile, 'utf8');
+
+// The -Zast-json-noexpand option is only available for the "nightly" rust version.
+let ASTJSON;
+try {
+    ASTJSON = JSON.parse(execSync('rustc -Zast-json-noexpand ' + sourceFile, {timeout: 1000, stdio: ['ignore', 'pipe', 'ignore']}));
+} catch (e) {
+    // rustc failed
+    ASTJSON = null;
+}
+
+let raj = new rustc_ast_json();
+let parseTree = raj.parse(ASTJSON, sourceCodeString);
+console.log(JSON.stringify(parseTree,null,4));

@@ -13,7 +13,7 @@ class rustc_ast_json{
     // sourceCodeString: the content of [filename.rs]
     // The -Zast-json-noexpand option is only available for the "nightly" rustc version.
     tokenize(AST, sourceCodeString) {
-        this.tokens = {};
+        this.tokensBytePos = {};
         this.lastLo = -1;
         // Attributes on the top-level don't exist in the 'tokens' array in the AST
         // and must be extracted from 'attrs' instead.
@@ -68,17 +68,17 @@ class rustc_ast_json{
             if (!this.idents.hasOwnProperty(modPos)) {
                 let modPosOffset = parseInt(modPos);
                 if (this.mods[modPos].pub) {
-                    this.tokens[modPosOffset] = ['Ident', 'pub']; modPosOffset += 3+1;
+                    this.tokensBytePos[modPosOffset] = ['Ident', 'pub']; modPosOffset += 3+1;
                 }
-                this.tokens[modPosOffset] = ['Ident', 'mod']; modPosOffset += 3+1;
-                this.tokens[modPosOffset] = ['Ident', this.mods[modPos].ident]; modPosOffset += this.mods[modPos].ident.length + 1;
-                this.tokens[modPosOffset] = ['LBrace', '{']; modPosOffset += 1;
-                this.tokens[this.mods[modPos].hi*1-1] = ['RBrace', '}'];
+                this.tokensBytePos[modPosOffset] = ['Ident', 'mod']; modPosOffset += 3+1;
+                this.tokensBytePos[modPosOffset] = ['Ident', this.mods[modPos].ident]; modPosOffset += this.mods[modPos].ident.length + 1;
+                this.tokensBytePos[modPosOffset] = ['LBrace', '{']; modPosOffset += 1;
+                this.tokensBytePos[this.mods[modPos].hi*1-1] = ['RBrace', '}'];
             }
         }
         let sortedTokens = [];
-        for(let lo of Object.keys(this.tokens).sort(function(a, b){return a - b})) {
-            sortedTokens.push(this.tokens[lo]);
+        for(let lo of Object.keys(this.tokensBytePos).sort(function(a, b){return a - b})) {
+            sortedTokens.push(this.tokensBytePos[lo]);
         }
         return sortedTokens;
     }
@@ -106,11 +106,11 @@ class rustc_ast_json{
                 }
             }
         }
-        if (this.tokens.hasOwnProperty(tokenBytePos)) {
+        if (this.tokensBytePos.hasOwnProperty(tokenBytePos)) {
             // duplicate token, skip
             return;
         }
-        this.tokens[tokenBytePos] = [tokenType, tokenStr];
+        this.tokensBytePos[tokenBytePos] = [tokenType, tokenStr, tokenBytePos];
     }
 
     newToken(tokenType, hiLo) {
@@ -218,6 +218,90 @@ class rustc_ast_json{
             }
         }
     }
+
+    restructureAST(AST, newAST) {
+        if (AST == undefined) {
+            return null;
+        }
+        if (AST.constructor === Array) {
+            let i = 0;
+            for (let element of AST) {
+                this.restructureAST(element, newAST);
+                i++;
+            }
+        } else if (AST.constructor === Object) {
+            let nodeType;
+            let children = {};
+            if (typeof(AST.node) === 'string') {
+                nodeType = AST.node;
+            } else if (AST.node && AST.node.variant) {
+                nodeType = AST.node.variant;
+                if (AST.node.fields) {
+                    this.restructureAST(AST.node.fields, children);
+                }
+            }
+            if (AST.span && nodeType) {
+                let lo = AST.span.lo;
+                if (!newAST.hasOwnProperty(lo)) {
+                    newAST[lo] = [];
+                }
+                newAST[lo].push({nodeType: nodeType, lo: lo, hi: AST.span.hi, children: children});
+            }
+            for (let key of Object.keys(AST).sort()) {
+                if (key == 'span' || key == 'node') {
+                    continue;
+                }
+                this.restructureAST(AST[key], newAST);
+            }
+        }
+    }
+
+    parse(AST, sourceCodeString) {
+        this.tokens = this.tokenize(AST, sourceCodeString);
+        let newAST = {};
+        this.restructureAST(AST, newAST);
+        return ['Rust', this.buildParseTree(newAST)];
+
+    }
+
+    peekLo(children) {
+        for (let lo of Object.keys(children).sort(function(a, b){return parseInt(a) - parseInt(b)})) {
+            return children[lo][0].lo;
+        }
+        return null;
+    }
+
+    buildParseTree(newAST) {
+        let parseTree = [];
+        for (let lo of Object.keys(newAST).sort(function(a, b){return parseInt(a) - parseInt(b)})) {
+            for (let o of newAST[lo]) {
+                while (this.tokens.length > 0 && this.tokens[0][2] < o.lo) {
+                    let t = this.tokens.shift();
+                    parseTree.push([t[0], t[1]]);
+                }
+                let c = [];
+                while (this.tokens.length > 0 && this.tokens[0][2] >= o.lo && this.tokens[0][2] < this.peekLo(o.children)) {
+                    let t = this.tokens.shift();
+                    c.push([t[0], t[1]]);
+                }
+                if (Object.keys(o.children).length == 0) {
+                    if (this.tokens.length > 0 && this.tokens[0][2] == o.lo) {
+                        let t = this.tokens.shift();
+                        c.push([t[0], t[1]]);
+                    }
+                } else {
+                    c = c.concat(this.buildParseTree(o.children));
+                }
+                while (this.tokens.length > 0 && this.tokens[0][2] < o.hi) {
+                    let t = this.tokens.shift();
+                    c.push([t[0], t[1]]);
+                }
+                parseTree.push([o.nodeType, c]);
+            }
+        }
+        return parseTree;
+    }
+
 }
 
 module.exports = rustc_ast_json;
