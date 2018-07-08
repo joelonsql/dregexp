@@ -2,28 +2,94 @@
 const { execSync } = require('child_process');
 let fs = require('fs');
 let rustc_ast_json = require('./rustc_ast_json');
-
+let raj = new rustc_ast_json();
 let sourceFile = process.argv[2];
+let nodeType = process.argv[3];
 
-if (sourceFile == null) {
-    console.log('Usage: rust-tester [filename.rs]');
-    return;
-} else if (!fs.existsSync(sourceFile)) {
+if (sourceFile != null && !fs.existsSync(sourceFile)) {
     console.error('File does not exist: ' + sourceFile);
     return;
 }
 
-let sourceCodeString = fs.readFileSync(sourceFile, 'utf8');
-
-// The -Zast-json-noexpand option is only available for the "nightly" rust version.
-let ASTJSON;
-try {
-    ASTJSON = JSON.parse(execSync('rustc -Zast-json-noexpand ' + sourceFile, {timeout: 1000, stdio: ['ignore', 'pipe', 'ignore']}));
-} catch (e) {
-    // rustc failed
-    ASTJSON = null;
+function getParseTree(sourceFile) {
+    let sourceCodeString = fs.readFileSync(sourceFile, 'utf8');
+    // The -Zast-json-noexpand option is only available for the "nightly" rust version.
+    let AST = JSON.parse(execSync('rustc -Zast-json-noexpand ' + sourceFile, {timeout: 1000, stdio: ['ignore', 'pipe', 'ignore']}));
+    let parseTree = raj.parse(AST, sourceCodeString);
+    return parseTree;
 }
 
-let raj = new rustc_ast_json();
-let parseTree = raj.parse(ASTJSON, sourceCodeString);
-console.log(JSON.stringify(parseTree,null,4));
+function printParseTree(parseTree) {
+    let str = [];
+    if (typeof(parseTree[1]) === 'string') {
+        return [parseTree[1]];
+    } else {
+        for (let n of parseTree[1]) {
+            str = str.concat(printParseTree(n));
+        }
+    }
+    return str;
+}
+
+function showNodeTypeChildren(nodeType, parseTree) {
+    if (parseTree[0] == nodeType) {
+        if (typeof(parseTree[1]) === 'string') {
+            console.log('"' + parseTree[1] + '"');
+        } else {
+            let children = [];
+            for (let n of parseTree[1]) {
+                children.push(n[0]);
+            }
+//            console.log(children.join(' ') + ' : "' + printParseTree(parseTree).join(' ') + '"');
+            console.log(children.join(' '));
+        }
+    }
+    if (typeof(parseTree[1]) === 'string') {
+        return;
+    }
+    for (let n of parseTree[1]) {
+        showNodeTypeChildren(nodeType, n);
+    }
+}
+
+// Filename can be passed as argument,
+// otherwise a http server is started
+// and source code is passed as POST data
+if (sourceFile != null) {
+    let parseTree = getParseTree(sourceFile);
+    if (nodeType) {
+//        console.log(printParseTree(parseTree).join(' '));
+        showNodeTypeChildren(nodeType, parseTree);
+    } else {
+        console.log(JSON.stringify(parseTree,null,4));
+    }
+    process.exit(0);
+}
+
+const http = require('http');
+const hostname = '127.0.0.1';
+const port = 3000;
+const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+        sourceCodeString = Buffer.concat(chunks).toString();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        let sourceFile = '/tmp/input.rs';
+        fs.writeFileSync(sourceFile, sourceCodeString);
+        try {
+            let output = JSON.stringify(getParseTree(sourceFile),null,4);
+            res.end(output);
+            console.log(sourceCodeString.length + ' bytes read, ' + output.length + ' bytes written');
+        } catch (e) {
+            res.end('["Rust","Error"]');
+            console.log('rustc failed');
+        }
+    })
+});
+server.listen(port, hostname, () => {
+    console.log(`Server running at http://${hostname}:${port}/`);
+});
+

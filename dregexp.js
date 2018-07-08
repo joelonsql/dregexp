@@ -183,6 +183,7 @@ class DRegExp {
         let tokenizerNodeTypes = this.tokenizerNodeTypes[parser];
         let re = this.tokenizeRegExp(parser);
         let rx = re.regexp;
+        console.log('regexp: ' + rx);
         let m;
         let lastIndex = 0;
         while (m = rx.exec(inputString)) {
@@ -235,6 +236,7 @@ class DRegExp {
                 errorRecovery = '(?:' + this.encodeNodeType('?') + '\\d+,)?';
             }
         }
+        console.log('nodeString: ' + nodeString);
         for (let didWork = true; didWork; ) {
             didWork = false;
             for (let percedenceGroup of this.parserNodeTypes[parser]) {

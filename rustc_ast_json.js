@@ -78,9 +78,25 @@ class rustc_ast_json{
         }
         let sortedTokens = [];
         for(let lo of Object.keys(this.tokensBytePos).sort(function(a, b){return a - b})) {
+            this.identToKeyword(this.tokensBytePos[lo]);
             sortedTokens.push(this.tokensBytePos[lo]);
         }
         return sortedTokens;
+    }
+
+    identToKeyword(t) {
+        if (t[0] != 'Ident') {
+            return;
+        }
+        let keywords = ['abstract','alignof','as','become','box','break','const','continue',
+                        'crate','do','else','enum','extern','false','final','fn','for','if',
+                        'impl','in','let','loop','macro','match','mod','move','mut','offsetof',
+                        'override','priv','pub','pure','ref','return','self','Self','sizeof',
+                        'static','struct','super','trait','true','type','typeof','unsafe',
+                        'unsized','use','virtual','where','while','yield'];
+        if (keywords.includes(t[1])) {
+            t[0] = t[1];
+        }
     }
 
     _newToken(tokenType, tokenBytePos, tokenStr = null) {
@@ -232,23 +248,40 @@ class rustc_ast_json{
         } else if (AST.constructor === Object) {
             let nodeType;
             let children = {};
-            if (typeof(AST.node) === 'string') {
-                nodeType = AST.node;
+            if (AST.hasOwnProperty('stmts')) {
+                nodeType = 'Statements';
+                this.restructureAST(AST.stmts, children);
+            } else if (typeof(AST.node) === 'string') {
+                if (AST.node != 'Inherited') {
+                    nodeType = AST.node;
+                }
+            } else if (typeof(AST.ident) === 'string' && AST.hasOwnProperty('ty')) {
+                nodeType = 'Field';
+                this.restructureAST(AST.ty, children);
             } else if (AST.node && AST.node.variant) {
                 nodeType = AST.node.variant;
                 if (AST.node.fields) {
                     this.restructureAST(AST.node.fields, children);
                 }
+            } else if (AST.parameters && AST.parameters.variant && AST.parameters.fields && AST.parameters.fields[0] && AST.parameters.fields[0].span) {
+                AST.span = AST.parameters.fields[0].span;
+                nodeType = AST.parameters.variant;
+                if (AST.parameters.fields) {
+                    this.restructureAST(AST.parameters.fields, children);
+                }
             }
             if (AST.span && nodeType) {
                 let lo = AST.span.lo;
+                let hi = AST.span.hi;
                 if (!newAST.hasOwnProperty(lo)) {
                     newAST[lo] = [];
                 }
-                newAST[lo].push({nodeType: nodeType, lo: lo, hi: AST.span.hi, children: children});
+                if (lo < hi) { // to filter out nodes like "Inherited" that have lo=0,hi=0
+                    newAST[lo].push({nodeType: nodeType, lo: lo, hi: hi, children: children});
+                }
             }
             for (let key of Object.keys(AST).sort()) {
-                if (key == 'span' || key == 'node') {
+                if (key == 'span' || key == 'node' || key == 'stmts' || key == 'parameters') {
                     continue;
                 }
                 this.restructureAST(AST[key], newAST);
@@ -296,7 +329,9 @@ class rustc_ast_json{
                     let t = this.tokens.shift();
                     c.push([t[0], t[1]]);
                 }
-                parseTree.push([o.nodeType, c]);
+                if (c.length > 0) {
+                    parseTree.push([o.nodeType, c]);
+                }
             }
         }
         return parseTree;

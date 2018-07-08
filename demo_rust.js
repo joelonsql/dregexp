@@ -19,22 +19,7 @@ function updateTable() {
         });
 }
 
-function parseAndDrawTree() {
-
-        let inputString = document.getElementById('inputString').value;
-        let eliminateUselessNodes = document.getElementById('eliminateUselessNodes').checked;
-        console.log('inputString: ' + inputString);
-
-        let tokenNodes = drx.tokenize(inputString);
-        console.log('tokenNodes: ' + tokenNodes);
-
-        let parseTree = drx.parse(tokenNodes);
-        console.log('parseTree:');
-        console.log(JSON.stringify(parseTree,null,4));
-        if (eliminateUselessNodes) {
-            parseTree = drx.eliminateNodes(parseTree);
-        }
-
+function updateChart(containerId, parseTree) {
         // The code below is only necessary to draw the tree diagram
         // using the third-party library Treant.js
         // from http://fperucic.github.io/treant-js/
@@ -57,7 +42,7 @@ function parseAndDrawTree() {
         }
         let simple_chart_config = {
             chart: {
-                container: "#parseTree",
+                container: containerId,
                 node: {
                     collapsable: true
                 }
@@ -67,7 +52,32 @@ function parseAndDrawTree() {
         new Treant( simple_chart_config );
 }
 
-Papa.parse('grammars/json.csv', {
+function parseAndDrawTree() {
+
+        let inputString = document.getElementById('inputString').value;
+        let eliminateUselessNodes = document.getElementById('eliminateUselessNodes').checked;
+        console.log('inputString: ' + inputString);
+        let tokenNodes = drx.tokenize(inputString);
+        console.log('tokenNodes: ' + tokenNodes);
+
+        let parseTree = ['Rust', tokenNodes];
+
+        updateChart('#parseTree', parseTree);
+
+        fetch("http://127.0.0.1:3000/", {
+            method: "POST", 
+            body: inputString
+        }).then(function(response) {
+            return response.json();
+        }).then(function(myJson) {
+            updateChart('#parseTree2', myJson);
+        });
+    
+}
+
+
+
+Papa.parse('grammars/rust.csv', {
     header: true,
     download: true,
     complete: function(results) {

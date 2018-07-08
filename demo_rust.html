@@ -14,18 +14,31 @@
         <script src="Treant.js"></script>
         <script src="jquery.min.js"></script>
         <script src="jquery.easing.js"></script>
-        <script src="demo.js"></script>
+        <script src="demo_rust.js"></script>
         <script src="jquery.jexcel.js"></script>
         <link rel="stylesheet" href="jquery.jexcel.css" type="text/css" />
     </head>
     <body>
         <h1>Demo of dregexp</h1>
         <div>Check out View -> Developer -> Develope Tools -> Console</div>
-        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">{"foo":{"bar":true}}</textarea>
+        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">struct G<S,T>{x:S,y:T}
+fn f<S,T>(){let x:S;let y:T;}
+fn g(a:bool,b:bool){}
+struct A{}
+struct B{}
+fn main(){
+let S:i32=1;
+let T:i32=2;
+let E:i32=5;
+g(E<S,T>3);
+f::<G<A,B>,i32>();
+}
+</textarea>
         <br/>
         <input type="checkbox" id="eliminateUselessNodes" onchange="parseAndDrawTree()" checked="checked"/>Eliminate useless nodes
         <br/>
         <div class="chart" id="parseTree"></div>
+        <div class="chart" id="parseTree2"></div>
         <button id='reloadGrammar'>Reload grammar</button>
         <button id='emptyGrammar'>Empty grammar</button>
         <div id="mytable"></div>
