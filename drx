@@ -1,0 +1,31 @@
+#!/usr/local/bin/node
+let DRegExp = require('./dregexp');
+let Papa = require('./papaparse');
+let fs = require('fs');
+
+let drx = new DRegExp();
+
+let csvGrammarFile = process.argv[2];
+let inputDataFile = process.argv[3];
+
+if (!csvGrammarFile || !inputDataFile) {
+    throw new Error('Usage: ./drx [grammar csv file] [file to parse]');
+} else if (!fs.existsSync(csvGrammarFile)) {
+    throw new Error('No such such file: ' + csvGrammarFile);
+} else if (!fs.existsSync(inputDataFile)) {
+    throw new Error('No such such file: ' + inputDataFile);
+}
+
+drx.loadGrammarRules(Papa.parse(fs.readFileSync(csvGrammarFile, 'utf8'), {header: true}).data);
+
+let inputData = fs.readFileSync(inputDataFile, 'utf8');
+
+let tokens = drx.tokenize(inputData);
+let parseTree = drx.parse('JSON', tokens.slice(0));
+let AST = drx.eliminateNodes(parseTree.slice(0));
+
+process.stdout.write(JSON.stringify({
+    tokens: tokens,
+    parseTree: parseTree,
+    AST: AST
+}, null, 2));
