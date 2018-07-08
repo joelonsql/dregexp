@@ -22,7 +22,7 @@ while (true) {
 }
 
 if (codePattern == null || sourceCodeFile == null) {
-    console.log('Usage: drep [-g grammar csv file] [-A num] [-B num] [code pattern] [source code file]');
+    console.log('Usage: tokgrep [-g grammar csv file] [-A num] [-B num] [code pattern] [source code file]');
     return;
 } else if (!fs.existsSync(sourceCodeFile)) {
     console.error('File does not exist: ' + sourceCodeFile);
