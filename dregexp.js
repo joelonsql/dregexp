@@ -1,15 +1,20 @@
 class DRegExp {
 
     constructor(flags = {}) {
+        this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
+        this.flags = flags;
+        this.resetGrammarRules();
+    }
+
+    resetGrammarRules() {
         this.nodeTypes = ['?']; // the first nodeType is a special one for unrecognized characters
         this.nodeTypeIds = {'?':0};
-        this.firstNodeTypeCharCode = 44032; // Unbroken sequence of >10000 ideograms starting at this unicode char code
         this.nodeGroups = {};
         this.grammarRules = {};
         this.tokenizerNodeTypes = [];
         this.parserNodeTypes = {};
-        this.flags = flags;
         this.mainParser = null;
+        this.numNodes = 0;
     }
 
     loadGrammarRules(csvInputArrayOfHashes) {
@@ -177,6 +182,7 @@ class DRegExp {
     tokenize(inputString, options = {}) {
         this.tokenNodes = [];
         this._tokenize(inputString, options);
+        this.numNodes = this.tokenNodes.length;
         return this.tokenNodes;
     }
 
@@ -297,13 +303,22 @@ class DRegExp {
                     } else {
                         tokenNodes[nodeId++] = [nodeType, subNodes];
                     }
+                    if (this.maxNodes && nodeId >= this.maxNodes) {
+                        didWork = false;
+                        break;
+                    }
                     didWork = true;
+                    break; // FIXME while() should be eliminated
                 }
                 if (lastIndex > 0) {
                     if (nodeString.length > lastIndex) {
                         newNodeString += nodeString.slice(lastIndex, nodeString.length);
                     }
                     nodeString = newNodeString;
+                }
+                if (this.maxNodes && nodeId >= this.maxNodes) {
+                    didWork = false;
+                    break;
                 }
             }
         }
@@ -324,8 +339,8 @@ class DRegExp {
             }
             tokenNodes[nodeId++] = ['?', subNodes];
         }
-        nodeId--;
-        return tokenNodes[nodeId]; // parseTree
+        this.numNodes = nodeId;
+        return tokenNodes[nodeId-1]; // parseTree
     }
 
     encodeNodeType(nodeType) {
@@ -446,6 +461,194 @@ class DRegExp {
             re = re.replace(backRef, newBackRef);
         }
         return {offset: offset+numCaptureGroups, re: re};
+    }
+
+    tokenEscape(S) {
+        let str = String(S);
+        let cpList = Array.from(str[Symbol.iterator]());
+        let cuList = [];
+        let lastChar;
+        for(let c of cpList) {
+            if (c == ' ') {
+                cuList.push("\\x20");
+            } else if (c == "\t") {
+                cuList.push("\\t");
+            } else if (c == "\n") {
+                cuList.push("\\n");
+            } else {
+                if("^$\\.*+?()[]{}|".indexOf(c) !== -1) {
+                    cuList.push("\\");
+                } else if (lastChar && lastChar.match(/[a-zA-Z_]/) && c.match(/[a-zA-Z_]/)) {
+                    cuList.push(' ');
+                }
+                cuList.push(c);
+            }
+            lastChar = c;
+        }
+        let L = cuList.join('');
+        return L;
+    }
+
+    deriveGrammar(sourceCodeString, parseTree, csvInputArrayOfHashes = []) {
+        let parser = parseTree[0];
+        this._deriveGrammar(parser, parseTree, csvInputArrayOfHashes);
+        for(let r of csvInputArrayOfHashes) {
+            if (r.tokenizepatterns) {
+                if (r.tokenizepatterns.length > 0) {
+                    r.tokenizepattern = r.tokenizepatterns.join('|');
+                }
+                delete r.tokenizepatterns;
+            }
+            if (r.parsepatterns) {
+                if (r.parsepatterns.length > 0) {
+                    r.parsepattern = '(' + r.parsepatterns.join('|') + ')';
+                }
+                delete r.parsepatterns;
+            }
+        }
+        let tokens = this.unparseWithPaths(parseTree);
+        csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
+        return csvInputArrayOfHashes;
+    }
+
+    _deriveGrammar(parser, parseTree, csvInputArrayOfHashes) {
+        let nodeType = parseTree[0];
+        let rule;
+        for (let r of csvInputArrayOfHashes) {
+            if (r.nodetype == nodeType) {
+                rule = r;
+                break;
+            }
+        }
+        if (rule == undefined) {
+            rule = {
+                parser: parser,
+                nodetype: nodeType,
+                tokenizepatterns: [],
+                tokenizepattern: '',
+                parsepatterns: [],
+                parsepattern: '',
+                primitivetype: '',
+                nodegroup: '',
+                precedence: '',
+                subparser: ''
+            };
+            csvInputArrayOfHashes.unshift(rule);
+        }
+        if (typeof(parseTree[1]) === 'string') {
+            let pat = this.tokenEscape(parseTree[1]);
+            if (!rule.tokenizepatterns.includes(pat)) {
+                rule.tokenizepatterns.push(pat);
+            }
+        } else {
+            let parsePatterns = [];
+            for (let subTree of parseTree[1]) {
+                parsePatterns.push(subTree[0]);
+                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes);
+            }
+            let pat = parsePatterns.join(' ');
+            if (!rule.parsepatterns.includes(pat) && pat != nodeType ) {
+                rule.parsepatterns.push(pat);
+            }
+        }
+    }
+
+    compareAndFixTokenizer(sourceCodeString, expectedTokens, csvInputArrayOfHashes) {
+        console.log('compareAndFixTokenizer: ' + JSON.stringify({
+            sourceCodeString: sourceCodeString,
+            expectedTokens: expectedTokens,
+            csvInputArrayOfHashes: csvInputArrayOfHashes
+        },null,4));
+        this.resetGrammarRules();
+        this.loadGrammarRules(csvInputArrayOfHashes);
+        let resultTokens = this.tokenize(sourceCodeString);
+        console.log('result tokens: ' + resultTokens.length + ' ' + JSON.stringify(resultTokens,null,4));
+        let isEqual = resultTokens.length == expectedTokens.length;
+        let i;
+        for (i = 0; resultTokens[i] && expectedTokens[i]; i++) {
+            if (resultTokens[i][0] != expectedTokens[i][0]) {
+                console.log('resultTokens[i][0] != expectedTokens[i][0]: ' + i + ' ' + resultTokens[i][0] + ' ' + expectedTokens[i][0]);
+                isEqual = false;
+                break;
+            }
+            if (resultTokens[i][1] != expectedTokens[i][1]) {
+                throw new Error('nodeType ' + resultTokens[i][0] + ' is correct but literal differs: "' + resultTokens[i][1] + '" vs "' + expectedTokens[i][1] + '"');
+            }
+        }
+        if (isEqual) {
+            console.log('OK csvInputArrayOfHashes');
+            return csvInputArrayOfHashes;
+        }
+        let resultToken;
+        let expectedToken;
+        for(let r of csvInputArrayOfHashes) {
+            if (r.nodetype == resultTokens[i][0]) {
+                resultToken = r;
+            } else if (r.nodetype == expectedTokens[i][0]) {
+                expectedToken = r;
+            }
+        }
+        if (resultToken == undefined) {
+            throw new Error('dregexp nodeType ' + resultTokens[i][0] + ' not found in csvInputArrayOfHashes');
+        }
+        if (expectedToken == undefined) {
+            throw new Error('expectedToken nodeType ' + expectedTokens[i][0] + ' not found in csvInputArrayOfHashes');
+        }
+        let newCsvInputArrayOfHashes = [];
+        for(let r of csvInputArrayOfHashes) {
+            if (r.nodetype == expectedToken.nodetype) {
+                newCsvInputArrayOfHashes.push(expectedToken);
+                newCsvInputArrayOfHashes.push(resultToken);
+            } else if (r.nodetype != resultToken.nodetype) {
+                newCsvInputArrayOfHashes.push(r);
+            }
+        }
+        return this.compareAndFixTokenizer(sourceCodeString, expectedTokens, newCsvInputArrayOfHashes);
+    }
+
+    unparseWithPaths(parseTree, path = [], tokens = []) {
+        if (typeof(parseTree[1]) === 'string') {
+            tokens.push([parseTree[0], parseTree[1], path]);
+        } else {
+            let nodeType = parseTree[0];
+            path.unshift(nodeType);
+            for (let node of parseTree[1]) {
+                this.unparseWithPaths(node, path.slice(0), tokens);
+            }
+        }
+        return tokens;
+    }
+
+    compareParseTrees(parseTree1, parseTree2, debugInfo = []) {
+        if (parseTree1[0] !== parseTree2[0]) {
+            debugInfo.push('parseTree1[0] !== parseTree2[0] : ' + parseTree1[0] + ' !== ' + parseTree2[0]);
+            return false;
+        } else if (typeof(parseTree1[1]) === 'string'
+                && typeof(parseTree2[1]) === 'string'
+                && parseTree1[1] === parseTree2[1]
+        ) {
+            return true;
+        } else if (Array.isArray(parseTree1[1]) && Array.isArray(parseTree2[1])) {
+            // both parseTrees are arrays
+            for (let i = 0; parseTree1[1][i] && parseTree2[1][i]; i++) {
+                if (!this.compareParseTrees(parseTree1[1][i], parseTree2[1][i], debugInfo)) {
+                    return false;
+                }
+            }
+            if (parseTree1[1].length !== parseTree2[1].length) {
+                debugInfo.push('parseTree1[1].length !== parseTree2[1].length : ' + parseTree1[1].length + ' !== ' + parseTree2[1].length);
+                return false;
+            }
+            return true;
+        } else if (typeof(parseTree1[1]) === 'string' && Array.isArray(parseTree2[1])) {
+            debugInfo.push('parseTree1 is string, parseTree2 is array');
+            return false;
+        } else if (typeof(parseTree2[1]) === 'string' && Array.isArray(parseTree1[1])) {
+            debugInfo.push('parseTree2 is string, parseTree1 is array');
+            return false;
+        } else {
+            throw new Error('ERROR Unexpected: parseTree1: ' + JSON.stringify(parseTree1) + ' parseTree2: ' + JSON.stringify(parseTree2));
+        }
     }
 
 

@@ -21,26 +21,17 @@
     <body>
         <h1>Demo of dregexp</h1>
         <div>Check out View -> Developer -> Develope Tools -> Console</div>
-        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">struct G<S,T>{x:S,y:T}
-fn f<S,T>(){let x:S;let y:T;}
-fn g(a:bool,b:bool){}
-struct A{}
-struct B{}
-fn main(){
-let S:i32=1;
-let T:i32=2;
-let E:i32=5;
-g(E<S,T>3);
-f::<G<A,B>,i32>();
-}
-</textarea>
+        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">fn main() {let x = 1+2*3;}</textarea>
         <br/>
         <input type="checkbox" id="eliminateUselessNodes" onchange="parseAndDrawTree()" checked="checked"/>Eliminate useless nodes
         <br/>
-        <div class="chart" id="parseTree"></div>
-        <div class="chart" id="parseTree2"></div>
         <button id='reloadGrammar'>Reload grammar</button>
         <button id='emptyGrammar'>Empty grammar</button>
+        <button id='stepBack'>Step back</button>
+        <button id='stepForward'>Step forward</button>
+        <div class="chart" id="parseTree"></div>
+        <div id="debugInfo"></div>
+        <div class="chart" id="parseTree2"></div>
         <div id="mytable"></div>
         <script>
             parseAndDrawTree();
@@ -61,6 +52,15 @@ f::<G<A,B>,i32>();
                     colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
                 });
                 drx = new DRegExp();
+                parseAndDrawTree();
+            });
+            $('#stepBack').on('click', function () {
+                drx.maxNodes = parseInt(drx.maxNodes ? drx.maxNodes : drx.numNodes) - 1;
+                console.log(drx.maxNodes);
+                parseAndDrawTree();
+            });
+            $('#stepForward').on('click', function () {
+                drx.maxNodes = parseInt(drx.maxNodes) + 1;
                 parseAndDrawTree();
             });
         </script>

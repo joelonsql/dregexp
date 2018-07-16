@@ -7,32 +7,6 @@ let raj = new rustc_ast_json();
 let sourceFile = process.argv[2];
 let nodeType = process.argv[3];
 
-function tokenEscape(S) {
-    let str = String(S);
-    let cpList = Array.from(str[Symbol.iterator]());
-    let cuList = [];
-    let lastChar;
-    for(let c of cpList) {
-        if (c == ' ') {
-            cuList.push("\\x20");
-        } else if (c == "\t") {
-            cuList.push("\\t");
-        } else if (c == "\n") {
-            cuList.push("\\n");
-        } else {
-            if("^$\\.*+?()[]{}|".indexOf(c) !== -1) {
-                cuList.push("\\");
-            } else if (lastChar && lastChar.match(/[a-zA-Z_]/) && c.match(/[a-zA-Z_]/)) {
-                cuList.push(' ');
-            }
-            cuList.push(c);
-        }
-        lastChar = c;
-    }
-    let L = cuList.join('');
-    return L;
-}
-
 if (sourceFile != null && !fs.existsSync(sourceFile)) {
     console.error('File does not exist: ' + sourceFile);
     return;
@@ -88,97 +62,6 @@ function showNodeTypeChildren(nodeType, parseTree) {
     }
 }
 
-function deriveGrammar(parser, parseTree, csvInputArrayOfHashes) {
-    let nodeType = parseTree[0];
-    let rule;
-    for (let r of csvInputArrayOfHashes) {
-        if (r.nodetype == nodeType) {
-            rule = r;
-            break;
-        }
-    }
-    if (rule == undefined) {
-        rule = {
-            parser: parser,
-            nodetype: nodeType,
-            tokenizepatterns: [],
-            tokenizepattern: '',
-            parsepatterns: [],
-            parsepattern: '',
-            primitivetype: '',
-            nodegroup: '',
-            precedence: '',
-            subparser: ''
-        };
-        csvInputArrayOfHashes.unshift(rule);
-    }
-    if (typeof(parseTree[1]) === 'string') {
-        let pat = tokenEscape(parseTree[1]);
-        if (!rule.tokenizepatterns.includes(pat)) {
-            rule.tokenizepatterns.push(pat);
-        }
-    } else {
-        let parsePatterns = [];
-        for (let subTree of parseTree[1]) {
-            parsePatterns.push(subTree[0]);
-            deriveGrammar(parser, subTree, csvInputArrayOfHashes);
-        }
-        let pat = parsePatterns.join(' ');
-        if (!rule.parsepatterns.includes(pat) && pat != nodeType ) {
-            rule.parsepatterns.push(pat);
-        }
-    }
-}
-
-function compareAndFixTokenizer(sourceCodeString, rustcTokens, csvInputArrayOfHashes) {
-    let drx = new DRegExp();
-    drx.loadGrammarRules(csvInputArrayOfHashes);
-    let dregexpTokens = drx.tokenize(sourceCodeString);
-    console.log('dregexp tokens: ' + dregexpTokens.length + ' ' + JSON.stringify(dregexpTokens,null,4));
-    let isEqual = dregexpTokens.length == rustcTokens.length;
-    let i;
-    for (i = 0; dregexpTokens[i] && rustcTokens[i]; i++) {
-        if (dregexpTokens[i][0] != rustcTokens[i][0]) {
-            console.log('dregexpTokens[i][0] != rustcTokens[i][0]: ' + i + ' ' + dregexpTokens[i][0] + ' ' + rustcTokens[i][0]);
-            isEqual = false;
-            break;
-        }
-        if (dregexpTokens[i][1] != rustcTokens[i][1]) {
-            throw new Error('nodeType ' + dregexpTokens[i][0] + ' is correct but literal differs: "' + dregexpTokens[i][1] + '" vs "' + rustcTokens[i][1] + '"');
-        }
-    }
-    if (isEqual) {
-        console.log('OK csvInputArrayOfHashes');
-        return csvInputArrayOfHashes;
-    }
-    let dregexpToken;
-    let rustcToken;
-    for(let r of csvInputArrayOfHashes) {
-        if (r.nodetype == dregexpTokens[i][0]) {
-            dregexpToken = r;
-        } else if (r.nodetype == rustcTokens[i][0]) {
-            rustcToken = r;
-        }
-    }
-    if (dregexpToken == undefined) {
-        throw new Error('dregexp nodeType ' + dregexpTokens[i][0] + ' not found in csvInputArrayOfHashes');
-    }
-    if (rustcToken == undefined) {
-        throw new Error('rustcToken nodeType ' + rustcTokens[i][0] + ' not found in csvInputArrayOfHashes');
-    }
-    let newCsvInputArrayOfHashes = [];
-    for(let r of csvInputArrayOfHashes) {
-        if (r.nodetype == rustcToken.nodetype) {
-            newCsvInputArrayOfHashes.push(rustcToken);
-            newCsvInputArrayOfHashes.push(dregexpToken);
-        } else if (r.nodetype != dregexpToken.nodetype) {
-            newCsvInputArrayOfHashes.push(r);
-        }
-    }
-    console.log('newCsvInputArrayOfHashes:' + JSON.stringify(newCsvInputArrayOfHashes,null,4));
-    return compareAndFixTokenizer(sourceCodeString, rustcTokens, newCsvInputArrayOfHashes);
-}
-
 function eliminateRedudantNodes(parseTree) {
     // If a node has only one child that is of the same type
     // then the grand-child becomes the node's immediate child:
@@ -214,6 +97,52 @@ function eliminateRedudantNodes(parseTree) {
     }
 }
 
+function compareParseTrees(parseTree1, parseTree2) {
+    if (parseTree1[0] !== parseTree2[0]) {
+        console.log('DIFF parseTree1[0] !== parseTree2[0] : ' + parseTree1[0] + ' !== ' + parseTree2[0]);
+        return false;
+    } else if (typeof(parseTree1[1]) === 'string'
+            && typeof(parseTree2[1]) === 'string'
+            && parseTree1[1] === parseTree2[1]
+    ) {
+        console.log('OK parseTree1[1] === parseTree2[1] : "' + parseTree1[1] + '" === "' + parseTree2[1] + '"');
+        return true;
+    } else if (Array.isArray(parseTree1[1]) && Array.isArray(parseTree2[1])) {
+        // both parseTrees are arrays
+        for (let i = 0; parseTree1[1][i] && parseTree2[1][i]; i++) {
+            if (!compareParseTrees(parseTree1[1][i], parseTree2[1][i])) {
+                return false;
+            }
+        }
+        if (parseTree1[1].length !== parseTree2[1].length) {
+            console.log('parseTree1[1].length !== parseTree2[1].length : ' + parseTree1[1].length + ' !== ' + parseTree2[1].length);
+            return false;
+        }
+        return true;
+    } else if (typeof(parseTree1[1]) === 'string' && Array.isArray(parseTree2[1])) {
+        console.log('DIFF parseTree1 is string, parseTree2 is array');
+        return false;
+    } else if (typeof(parseTree2[1]) === 'string' && Array.isArray(parseTree1[1])) {
+        console.log('DIFF parseTree2 is string, parseTree1 is array');
+        return false;
+    } else {
+        throw new Error('ERROR Unexpected: parseTree1: ' + JSON.stringify(parseTree1) + ' parseTree2: ' + JSON.stringify(parseTree2));
+    }
+}
+
+function unparseWithPaths(parseTree, path = [], tokens = []) {
+    if (typeof(parseTree[1]) === 'string') {
+        tokens.push([parseTree[0], parseTree[1], path]);
+    } else {
+        let nodeType = parseTree[0];
+        path.unshift(nodeType);
+        for (let node of parseTree[1]) {
+            unparseWithPaths(node, path.slice(0), tokens);
+        }
+    }
+    return tokens;
+}
+
 function compareAndFixParser(sourceCodeString, rustcParseTree, csvInputArrayOfHashes) {
     let drx = new DRegExp();
     drx.loadGrammarRules(csvInputArrayOfHashes);
@@ -222,12 +151,17 @@ function compareAndFixParser(sourceCodeString, rustcParseTree, csvInputArrayOfHa
     let newCsvInputArrayOfHashes = [];
     console.log('rustcParseTree parseTree: ' + rustcParseTree.length + ' ' + JSON.stringify(rustcParseTree,null,4));
     console.log('dregexp parseTree: ' + dregexpParseTree.length + ' ' + JSON.stringify(dregexpParseTree,null,4));
+    console.log('compareParseTrees: ' + compareParseTrees(rustcParseTree, dregexpParseTree));
     if (JSON.stringify(rustcParseTree) == JSON.stringify(dregexpParseTree)) {
         console.log('OK, ASTs are equal!');
     } else {
         console.log('Error, ASTs are different!');
     }
     newCsvInputArrayOfHashes = csvInputArrayOfHashes;
+    let rustcParseTreeTokensWithPaths = unparseWithPaths(rustcParseTree);
+    console.log('rustcParseTreeTokensWithPaths:' + JSON.stringify(rustcParseTreeTokensWithPaths,null,4));
+    let dregexpParseTreeTokensWithPaths = unparseWithPaths(dregexpParseTree);
+    console.log('dregexpParseTreeTokensWithPaths:' + JSON.stringify(dregexpParseTreeTokensWithPaths,null,4));
     return newCsvInputArrayOfHashes;
 }
 
@@ -243,45 +177,46 @@ if (sourceFile != null) {
         process.exit(0);
     }
     console.log('rustcParseTree:' + JSON.stringify(rustcParseTree,null,4));
-    let parser = rustcParseTree[0];
     // Since white space and comments are not in the rustc ast output,
     // they cannot be derived and must be hard-coded manually:
+    let parser = rustcParseTree[0];
     let csvInputArrayOfHashes = [
         {
             parser: parser,
             nodetype: 'WS',
             tokenizepattern: '\\s+',
+            parsepattern: '',
+            primitivetype: '',
+            nodegroup: '',
+            precedence: '',
+            subparser: '',
         },
         {
             parser: parser,
             nodetype: 'LineComment',
             tokenizepattern: '//.*',
+            parsepattern: '',
+            primitivetype: '',
+            nodegroup: '',
+            precedence: '',
+            subparser: '',
         },
         {
             parser: parser,
             nodetype: 'BlockComment',
             tokenizepattern: '/\\*[\\s\\S]*?\\*/',
+            parsepattern: '',
+            primitivetype: '',
+            nodegroup: '',
+            precedence: '',
+            subparser: '',
         },
     ];
-    deriveGrammar(parser, rustcParseTree, csvInputArrayOfHashes);
-    for(let r of csvInputArrayOfHashes) {
-        if (r.tokenizepatterns) {
-            if (r.tokenizepatterns.length > 0) {
-                r.tokenizepattern = r.tokenizepatterns.join('|');
-            }
-            delete r.tokenizepatterns;
-        }
-        if (r.parsepatterns) {
-            if (r.parsepatterns.length > 0) {
-                r.parsepattern = '(' + r.parsepatterns.join('|') + ')';
-            }
-            delete r.parsepatterns;
-        }
-    }
+//    let rustcTokens = getTokens(sourceCodeString, sourceFile);
+//    console.log('rustc tokens: ' + rustcTokens.length + ' ' + JSON.stringify(rustcTokens,null,4));
+    let drx = new DRegExp();
+    csvInputArrayOfHashes = drx.deriveGrammar(sourceCodeString, rustcParseTree, csvInputArrayOfHashes);
     console.log(JSON.stringify(csvInputArrayOfHashes,null,4));
-    let rustcTokens = getTokens(sourceCodeString, sourceFile);
-    console.log('rustc tokens: ' + rustcTokens.length + ' ' + JSON.stringify(rustcTokens,null,4));
-    csvInputArrayOfHashes = compareAndFixTokenizer(sourceCodeString, rustcTokens, csvInputArrayOfHashes);
     csvInputArrayOfHashes = compareAndFixParser(sourceCodeString, rustcParseTree, csvInputArrayOfHashes);
     process.exit(0);
 }
@@ -300,7 +235,7 @@ const server = http.createServer((req, res) => {
         let sourceFile = '/tmp/input.rs';
         fs.writeFileSync(sourceFile, sourceCodeString);
         try {
-            let output = JSON.stringify(getParseTree(sourceCodeString, sourceFile),null,4);
+            let output = JSON.stringify(eliminateRedudantNodes(getParseTree(sourceCodeString, sourceFile)),null,4);
             res.end(output);
             console.log(sourceCodeString.length + ' bytes read, ' + output.length + ' bytes written');
         } catch (e) {

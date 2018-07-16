@@ -55,33 +55,56 @@ function updateChart(containerId, parseTree) {
 function parseAndDrawTree() {
 
         let inputString = document.getElementById('inputString').value;
-        let eliminateUselessNodes = document.getElementById('eliminateUselessNodes').checked;
-        console.log('inputString: ' + inputString);
-        let tokenNodes = drx.tokenize(inputString);
-        console.log('tokenNodes: ' + tokenNodes);
-
-        let parseTree = ['Rust', tokenNodes];
-
-        updateChart('#parseTree', parseTree);
-
         fetch("http://127.0.0.1:3000/", {
             method: "POST", 
             body: inputString
         }).then(function(response) {
             return response.json();
-        }).then(function(myJson) {
-            updateChart('#parseTree2', myJson);
+        }).then(function(rustcParseTree) {
+            updateChart('#parseTree2', rustcParseTree);
+            let parser = rustcParseTree[0];
+            let csvInputArrayOfHashes = [
+                {
+                    parser: parser,
+                    nodetype: 'WS',
+                    tokenizepattern: '\\s+',
+                    parsepattern: '',
+                    primitivetype: '',
+                    nodegroup: '',
+                    precedence: '',
+                    subparser: '',
+                },
+                {
+                    parser: parser,
+                    nodetype: 'LineComment',
+                    tokenizepattern: '//.*',
+                    parsepattern: '',
+                    primitivetype: '',
+                    nodegroup: '',
+                    precedence: '',
+                    subparser: '',
+                },
+                {
+                    parser: parser,
+                    nodetype: 'BlockComment',
+                    tokenizepattern: '/\\*[\\s\\S]*?\\*/',
+                    parsepattern: '',
+                    primitivetype: '',
+                    nodegroup: '',
+                    precedence: '',
+                    subparser: '',
+                },
+            ];
+            csvInputArrayOfHashes = drx.deriveGrammar(inputString, rustcParseTree, csvInputArrayOfHashes);
+            let tokenNodes = drx.tokenize(inputString);
+            let parseTree = drx.parse(tokenNodes);
+            updateChart('#parseTree', parseTree);
+            updateTable();
+            let debugInfo = [];
+            drx.compareParseTrees(parseTree, rustcParseTree, debugInfo);
+            document.getElementById('debugInfo').innerHTML
+                = (debugInfo.length == 0 ? 'OK' : JSON.stringify(debugInfo))
+                + '<br/>' + drx.numNodes + ' nodes'
+                + '<br/>' + drx.maxNodes + ' max nodes';
         });
-    
 }
-
-
-
-Papa.parse('grammars/rust.csv', {
-    header: true,
-    download: true,
-    complete: function(results) {
-        drx.loadGrammarRules(results.data);
-        updateTable();
-    }
-});
