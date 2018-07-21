@@ -127,7 +127,6 @@ class DRegExp {
                         nodeTypes.push(groupNodeType);
                    }
                 }
-                nodeTypes.concat(this.nodeGroups[subNodeType]);
             } else if (!nodeTypes.includes(subNodeType)) {
                 nodeTypes.push(subNodeType);
             }
