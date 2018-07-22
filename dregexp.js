@@ -109,7 +109,9 @@ class DRegExp {
             for (let nodeType of allTokenizeNodeTypes) {
                 let parser = this.grammarRules[nodeType].parser;
                 if (!tokenizeSubNodeTypes.includes(nodeType)) {
+                    console.warn('unused nodeType: ' + nodeType);
                     this.tokenizerNodeTypes[parser].push(nodeType);
+                    this.tokenizerUnusedNodeTypes[parser].push(nodeType);
                 }
             }
         }
