@@ -7,6 +7,7 @@ class DRegExp {
     }
 
     resetGrammarRules() {
+        this.containsParserRules = false;
         this.nodeTypes = ['?']; // the first nodeType is a special one for unrecognized characters
         this.nodeTypeIds = {'?':0};
         this.nodeGroups = {};
@@ -91,26 +92,17 @@ class DRegExp {
             }
         }
 
-        if (parseSubNodeTypes.length > 0) {
-            // Filter out node types that don't appear in any parse pattern.
-            for (let nodeType of allTokenizeNodeTypes) {
-                let parser = this.grammarRules[nodeType].parser;
-                if (parseSubNodeTypes.includes(nodeType)) {
-                    this.tokenizerNodeTypes[parser].push(nodeType);
-                } else if (!tokenizeSubNodeTypes.includes(nodeType)) {
+        this.containsParserRules = (this.parserNodeTypes.length > 0);
+
+        // Filter out node types that don't appear in any parse pattern.
+        for (let nodeType of allTokenizeNodeTypes) {
+            let parser = this.grammarRules[nodeType].parser;
+            if (parseSubNodeTypes.includes(nodeType)) {
+                this.tokenizerNodeTypes[parser].push(nodeType);
+            } else if (!tokenizeSubNodeTypes.includes(nodeType)) {
+                this.tokenizerNodeTypes[parser].push(nodeType);
+                if (this.containsParserRules) {
                     console.warn('unused nodeType: ' + nodeType);
-                    this.tokenizerNodeTypes[parser].push(nodeType);
-                    this.tokenizerUnusedNodeTypes[parser].push(nodeType);
-                }
-            }
-        } else {
-            // Filter out node types that appear in tokenize patterns,
-            // as such node types are only regexp "fragments".
-            for (let nodeType of allTokenizeNodeTypes) {
-                let parser = this.grammarRules[nodeType].parser;
-                if (!tokenizeSubNodeTypes.includes(nodeType)) {
-                    console.warn('unused nodeType: ' + nodeType);
-                    this.tokenizerNodeTypes[parser].push(nodeType);
                     this.tokenizerUnusedNodeTypes[parser].push(nodeType);
                 }
             }
