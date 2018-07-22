@@ -56,8 +56,6 @@ class DRegExp {
         this.tokenizerNodeTypes = {};
         this.tokenizerUnusedNodeTypes = {};
         this.parserNodeTypes = {};
-        let tokenizerNodeTypes = {};
-        let tokenizerUnusedNodeTypes = {};
         let allTokenizeNodeTypes = [];
         let tokenizeSubNodeTypes = [];
         let parseSubNodeTypes = [];
@@ -74,9 +72,9 @@ class DRegExp {
             if (rule.tokenizepattern && rule.tokenizepattern.length > 0) {
                 allTokenizeNodeTypes.push(nodeType);
                 tokenizeSubNodeTypes = this.extractNodeTypes(tokenizeSubNodeTypes, rule.tokenizepattern);
-                if (!tokenizerNodeTypes.hasOwnProperty(parser)) {
-                    tokenizerNodeTypes[parser] = [];
-                    tokenizerUnusedNodeTypes[parser] = [];
+                if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
+                    this.tokenizerNodeTypes[parser] = [];
+                    this.tokenizerUnusedNodeTypes[parser] = [];
                 }
             }
             if (rule.parsepattern && rule.parsepattern.length > 0) {
@@ -98,11 +96,11 @@ class DRegExp {
             for (let nodeType of allTokenizeNodeTypes) {
                 let parser = this.grammarRules[nodeType].parser;
                 if (parseSubNodeTypes.includes(nodeType)) {
-                    tokenizerNodeTypes[parser].push(nodeType);
+                    this.tokenizerNodeTypes[parser].push(nodeType);
                 } else if (!tokenizeSubNodeTypes.includes(nodeType)) {
                     console.warn('unused nodeType: ' + nodeType);
-                    tokenizerNodeTypes[parser].push(nodeType);
-                    tokenizerUnusedNodeTypes[parser].push(nodeType);
+                    this.tokenizerNodeTypes[parser].push(nodeType);
+                    this.tokenizerUnusedNodeTypes[parser].push(nodeType);
                 }
             }
         } else {
@@ -111,12 +109,10 @@ class DRegExp {
             for (let nodeType of allTokenizeNodeTypes) {
                 let parser = this.grammarRules[nodeType].parser;
                 if (!tokenizeSubNodeTypes.includes(nodeType)) {
-                    tokenizerNodeTypes[parser].push(nodeType);
+                    this.tokenizerNodeTypes[parser].push(nodeType);
                 }
             }
         }
-        this.tokenizerNodeTypes = tokenizerNodeTypes;
-        this.tokenizerUnusedNodeTypes = tokenizerUnusedNodeTypes;
     }
 
     extractNodeTypes(nodeTypes, patternString) {
