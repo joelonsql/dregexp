@@ -11,7 +11,8 @@ class DRegExp {
         this.nodeTypeIds = {'?':0};
         this.nodeGroups = {};
         this.grammarRules = {};
-        this.tokenizerNodeTypes = [];
+        this.tokenizerNodeTypes = {};
+        this.tokenizerUnusedNodeTypes = {};
         this.parserNodeTypes = {};
         this.mainParser = null;
         this.numNodes = 0;
