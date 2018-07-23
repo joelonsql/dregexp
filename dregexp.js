@@ -7,41 +7,58 @@ class DRegExp {
     }
 
     resetGrammarRules() {
-        this.containsParserRules = false;
-        this.nodeTypes = ['?']; // the first nodeType is a special one for unrecognized characters
-        this.nodeTypeIds = {'?':0};
-        this.nodeGroups = {};
-        this.grammarRules = {};
-        this.tokenizerNodeTypes = {};
-        this.tokenizerUnusedNodeTypes = {};
-        this.parserNodeTypes = {};
         this.mainParser = null;
+        
+        this.nodeTypes = ['?']; // Array of all node types.
+                                // The first nodeType is a special one for unrecognized characters
+        this.nodeTypeIds = {'?':0}; // nodeTypeId = this.nodeTypeIds[nodeType]
+        this.nodeGroups = {}; // arrayOfNodeTypesInGroup = this.nodeGroups[nodeGroup]
+
+        this.containsParserRules = false;
+        
+        this.tokenizerGrammarRules = {}; // tokenizerGrammarRule = this.tokenizerGrammarRules[nodeType]
+        this.tokenDefiningTokenizerNodeTypes = []; // arrayOfTokenDefiningNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser]
+                                                   // Some tokenizer grammar rules are used only in other tokenizer grammar
+                                                   // rules and they do not define tokens. this.tokenDefiningTokenizerNodeTypes contains
+                                                   // the node types of the tokenizer grammar rules that do define tokens.
+        this.tokenizerUnusedNodeTypes = []; // arrayOfUnusedTokenizerNodeTypes = this.tokenizerUnusedNodeTypes[parser]
+
+        this.parserGrammarRules = []; // parserGrammarRule = parserGrammarRules[parserGrammarRuleId]
+        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {}; // { percedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPercedenceGroupByParserAndPercedenceGroup[parser][percedenceGroupIndex]
+
         this.numNodes = 0;
     }
 
     loadGrammarRules(csvInputArrayOfHashes) {
         let nodeTypeId = this.nodeTypes.length;
-        for (let rule of csvInputArrayOfHashes) {
-            let parser = rule.parser;
-            if (!parser) {
-                // skip empty lines
+        let parserGrammarRuleId = this.parserGrammarRules.length;
+        for (let grammarRule of csvInputArrayOfHashes) {
+            let parser = grammarRule.parser;
+
+            // Skip empty lines:
+            if (!grammarRule.parser) {
                 continue;
-            } else if (this.mainParser == null) {
-                this.mainParser = parser;
             }
-            let nodeType = this.validateName(rule.nodetype);
+
+            // The main parser is the parser of the first grammar rule:
+            if (this.mainParser == null) {
+                this.mainParser = grammarRule.parser;
+            }
+
+            // Add the node type:
+            let nodeType = this.validateName(grammarRule.nodetype);            
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
                 throw new Error('nodeType ' + nodeType + ' is already declared as a nodeGroup');
             }
-            if (this.grammarRules.hasOwnProperty(nodeType)) {
-                throw new Error('duplicate nodeType: ' + nodeType);
+            if (!this.nodeTypes.contains(nodeType)) {
+                this.nodeTypes.push(nodeType);
+                this.nodeTypeIds[nodeType] = nodeTypeId++;
             }
-            this.grammarRules[nodeType] = rule;
-            this.nodeTypes.push(nodeType);
-            this.nodeTypeIds[nodeType] = nodeTypeId++;
+
+            // Add the node group:
             if (rule.nodegroup) {
                 let nodeGroup = this.validateName(rule.nodegroup);
-                if (this.grammarRules.hasOwnProperty(nodeGroup)) {
+                if (this.nodeTypes.contains(nodeGroup)) {
                     throw new Error('nodeGroup ' + nodeGroup + ' is already declared as a nodeType');
                 }
                 if (!this.nodeGroups.hasOwnProperty(nodeGroup)) {
@@ -49,58 +66,78 @@ class DRegExp {
                 }
                 this.nodeGroups[nodeGroup].push(nodeType);
             }
+
+            // Split the grammar rules in to tokenizer and parser grammar rules:
+            {
+                let isTokenizerGrammarRule = grammarRule.tokenizepattern && grammarRule.tokenizepattern.length > 0;
+                let isParserGrammarRule = grammarRule.parsepattern && grammarRule.parsepattern.length > 0;
+
+                if (isTokenizerGrammarRule && isParserGrammarRule) {
+                    throw new Error('A grammar rule cannot be both a tokenizer and a parser grammar rule.');
+                }
+
+                if (isTokenizerGrammarRule) {
+                    if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
+                        throw new Error('Duplicate nodeType ' + nodeType + ' among tokenizer grammar rules.');
+                    }
+                    this.tokenizerGrammarRules[nodeType] = grammarRule;
+                } else if (isParserGrammarRule) {
+                    containsParserRules = true;
+                    
+                    if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
+                        throw new Error('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
+                    }
+                    this.parserGrammarRules.push(grammarRule);
+                    parserGrammarRuleId++;
+                } else {
+                    throw new Error('A grammar rule must be a tokenizer or a parser grammar rule.');
+                }
+            }            
         }
         this.processGrammarRules();
-    }
+    }f
 
     processGrammarRules() {
-        this.tokenizerNodeTypes = {};
-        this.tokenizerUnusedNodeTypes = {};
-        this.parserNodeTypes = {};
-        let allTokenizeNodeTypes = [];
-        let tokenizeSubNodeTypes = [];
-        let parseSubNodeTypes = [];
-        let prevPrecedence = null;
-        for (let nodeType of this.nodeTypes) {
-            if (nodeType == '?') {
-                continue;
+        // Populate this.parserGrammarRuleIdsByParserAndPercedenceGroup
+        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {};
+        for (parserGrammarRuleId = 0; parserGrammarRuleId != this.parserGrammarRules.length; parserGrammarRuleId++) {
+            let parserGrammarRule = this.parserGrammarRules[parserGrammarRuleId];
+
+            if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
+                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser] = [];
             }
-            let rule = this.grammarRules[nodeType];
-            let parser = rule.parser;
-            if (!parser) {
-                throw new Error('parser undefined');
-            }
-            if (rule.tokenizepattern && rule.tokenizepattern.length > 0) {
-                allTokenizeNodeTypes.push(nodeType);
-                tokenizeSubNodeTypes = this.extractNodeTypes(tokenizeSubNodeTypes, rule.tokenizepattern);
-                if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
-                    this.tokenizerNodeTypes[parser] = [];
-                    this.tokenizerUnusedNodeTypes[parser] = [];
-                }
-            }
-            if (rule.parsepattern && rule.parsepattern.length > 0) {
-                if (!this.parserNodeTypes.hasOwnProperty(parser)) {
-                    this.parserNodeTypes[parser] = [];
-                }
-                if (prevPrecedence && prevPrecedence == rule.precedence) {
-                    this.parserNodeTypes[parser][this.parserNodeTypes[parser].length - 1].nodeTypes.push(nodeType);
-                } else {
-                    this.parserNodeTypes[parser].push({percedence: rule.precedence, nodeTypes: [nodeType]});
-                    prevPrecedence = rule.precedence;
-                }
-                parseSubNodeTypes = this.extractNodeTypes(parseSubNodeTypes, rule.parsepattern);
+
+            if (prevPrecedence && prevPrecedence == parserGrammarRule.precedence) {
+                let lastPercedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].length - 1;
+                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][lastPercedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleIds);
+            } else {
+                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].push({percedence: parserGrammarRule.precedence, nodeTypes: [nodeType]});
+                
+                prevPrecedence = parserGrammarRule.precedence;
             }
         }
+        
+        let tokenizerSubNodeTypes = [];
+        for (tokenizerGrammarRule in this.tokenizerGrammarRules) {
+            tokenizerSubNodeTypes = this.extractNodeTypes(tokenizerSubNodeTypes, tokenizerGrammarRule.tokenizepattern);
+        }
 
-        this.containsParserRules = (this.parserNodeTypes.length > 0);
+        let parserSubNodeTypes = [];
+        for (parserGrammarRule in this.parserGrammarRules) {
+            parserSubNodeTypes = this.extractNodeTypes(parserSubNodeTypes, parserGrammarRule.parsepattern);        
+        }
 
-        // Filter out node types that don't appear in any parse pattern.
+        // Populate this.tokenDefiningTokenizerNodeTypes and this.tokenizerUnusedNodeTypes:
+        let TokenizerNodeTypes = allTokenizeNodeTypes
+        if (tokenizerGrammarRule in this.tokenizerGrammarRules) {
+            tokenizerGrammarRule.nodetype;
+        }
         for (let nodeType of allTokenizeNodeTypes) {
-            let parser = this.grammarRules[nodeType].parser;
-            if (parseSubNodeTypes.includes(nodeType)) {
-                this.tokenizerNodeTypes[parser].push(nodeType);
-            } else if (!tokenizeSubNodeTypes.includes(nodeType)) {
-                this.tokenizerNodeTypes[parser].push(nodeType);
+            let parser = this.tokenizerGrammarRules[nodeType].parser;
+            if (parserSubNodeTypes.includes(nodeType)) {
+                this.tokenDefiningTokenizerNodeTypes[parser].push(nodeType);
+            } else if (!tokenizerSubNodeTypes.includes(nodeType)) {
+                this.tokenDefiningTokenizerNodeTypes[parser].push(nodeType);
                 if (this.containsParserRules) {
                     console.warn('unused nodeType: ' + nodeType);
                     this.tokenizerUnusedNodeTypes[parser].push(nodeType);
@@ -130,7 +167,7 @@ class DRegExp {
         let captureGroups = {};
         let offset = 1;
         let i = 0;
-        for (let nodeType of this.tokenizerNodeTypes[parser]) {
+        for (let nodeType of this.tokenDefiningTokenizerNodeTypes[parser]) {
             captureGroups[i++] = offset;
             let re = this.expandTokenizePattern(nodeType);
             RegExp(re, 'u'); // test if it's valid to spot errors early
@@ -154,10 +191,10 @@ class DRegExp {
         }
     }
 
-    parseRegExp(nodeTypes, errorRecovery) {
+    parseRegExp(parserGrammarRuleIds, errorRecovery) {
         let parseRegexes = [];
-        for (let nodeType of nodeTypes) {
-            parseRegexes.push(this.expandParsePattern(nodeType, errorRecovery));
+        for (let parserGrammarRuleId of parserGrammarRuleIds) {
+            parseRegexes.push(this.expandParsePattern(parserGrammarRuleId, errorRecovery));
         }
         return new RegExp(parseRegexes.join('|'), 'ug');
     }
@@ -225,7 +262,7 @@ class DRegExp {
 
     parse(tokenNodes, options = {}) {
         let parser = options.parser || this.mainParser;
-        if (!this.parserNodeTypes.hasOwnProperty(parser)) {
+        if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
         let nodeString = '';
@@ -240,14 +277,14 @@ class DRegExp {
         console.log('nodeString: ' + nodeString);
         for (let didWork = true; didWork; ) {
             didWork = false;
-            for (let percedenceGroup of this.parserNodeTypes[parser]) {
+            for (let percedenceGroup of this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser]) {
                 let nodeType = null;
-                let re = this.parseRegExp(percedenceGroup.nodeTypes, errorRecovery);
+                let re = this.parseRegExp(percedenceGroup.parserGrammarRuleIds, errorRecovery);
                 let m;
                 let lastIndex = 0;
                 let newNodeString = '';
                 while (m = re.exec(nodeString)) {
-                    if (m.length != percedenceGroup.nodeTypes.length + 1) {
+                    if (m.length != percedenceGroup.parserGrammarRuleIds.length + 1) {
                         throw new Error('different number of capture groups than node types for given precedence');
                     } else if (m.index > lastIndex) {
                         newNodeString += nodeString.slice(lastIndex, m.index);
@@ -256,7 +293,7 @@ class DRegExp {
                     let matched = false;
                     let matchedStr = m[0];
                     let subNodeString = null;
-                    for (let i=0; i < percedenceGroup.nodeTypes.length; i++) {
+                    for (let i=0; i < percedenceGroup.parserGrammarRuleIds.length; i++) {
                         if (m[i+1] == null) {
                             continue;
                         } else if (matched) {
@@ -264,7 +301,7 @@ class DRegExp {
                         }
                         matched = true;
                         subNodeString = m[i+1];
-                        nodeType = percedenceGroup.nodeTypes[i];
+                        nodeType = this.parserGrammarRuleIdsByParserAndPercedenceGroup[percedenceGroup.parserGrammarRuleIds[i]].nodeType;
                     }
                     if (!matched) {
                         throw new Error('no capture group matched: ' + percedenceGroup.percedence);
@@ -353,10 +390,10 @@ class DRegExp {
             throw new Error('cycle detected: ' + nodeType);
         }
         visited.push(nodeType);
-        if (!this.grammarRules[nodeType]) {
+        if (!this.tokenizerGrammarRules[nodeType]) {
             throw new Error('no grammarRule for nodeType: ' + nodeType);
         }
-        let tokenizePattern = this.grammarRules[nodeType].tokenizepattern;
+        let tokenizePattern = this.tokenizerGrammarRules[nodeType].tokenizepattern;
         if (!tokenizePattern) {
             throw new Error('no tokenizepattern for nodeType: ' + nodeType);
         }
@@ -368,8 +405,8 @@ class DRegExp {
         return tokenizePattern;
     }
 
-    expandParsePattern(nodeType, errorRecovery = '') {
-        let parsePattern = this.grammarRules[nodeType].parsepattern;
+    expandParsePattern(parserGrammarRuleId, errorRecovery = '') {
+        let parsePattern = this.parserGrammarRules[parserGrammarRuleId].parsepattern;
         let bracketExpressions = parsePattern.match(/\[[A-Za-z_]{2,}(?:\s+[A-Za-z_]{2,})*\]/g) || [];
         for (let bracketExpression of bracketExpressions) {
             let expandedBracketExpression = '';
