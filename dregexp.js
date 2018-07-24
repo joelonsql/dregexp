@@ -50,7 +50,7 @@ class DRegExp {
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
                 throw new Error('nodeType ' + nodeType + ' is already declared as a nodeGroup');
             }
-            if (!this.nodeTypes.contains(nodeType)) {
+            if (!this.nodeTypes.includes(nodeType)) {
                 this.nodeTypes.push(nodeType);
                 this.nodeTypeIds[nodeType] = nodeTypeId++;
             }
@@ -58,7 +58,7 @@ class DRegExp {
             // Add the node group:
             if (rule.nodegroup) {
                 let nodeGroup = this.validateName(rule.nodegroup);
-                if (this.nodeTypes.contains(nodeGroup)) {
+                if (this.nodeTypes.includes(nodeGroup)) {
                     throw new Error('nodeGroup ' + nodeGroup + ' is already declared as a nodeType');
                 }
                 if (!this.nodeGroups.hasOwnProperty(nodeGroup)) {
@@ -67,27 +67,32 @@ class DRegExp {
                 this.nodeGroups[nodeGroup].push(nodeType);
             }
 
-            // Split the grammar rules in to tokenizer and parser grammar rules:
+            // Split the grammar rules into tokenizer and parser grammar rules:
             {
                 let isTokenizerGrammarRule = grammarRule.tokenizepattern && grammarRule.tokenizepattern.length > 0;
                 let isParserGrammarRule = grammarRule.parsepattern && grammarRule.parsepattern.length > 0;
 
+                if (!isTokenizerGrammarRule && !isParserGrammarRule) {
+                    throw new Error('A grammar rule must have tokenizer pattern or a parser pattern or both.');
+                }
+
                 if (isTokenizerGrammarRule) {
+                    if (this.parserGrammarRules.some(r => r.nodetype === nodeType)) {
+                        throw new Error('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
+                    }
                     if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
                         throw new Error('Duplicate nodeType ' + nodeType + ' among tokenizer grammar rules.');
                     }
                     this.tokenizerGrammarRules[nodeType] = grammarRule;
-                } else if (isParserGrammarRule) {
+                }
+
+                if (isParserGrammarRule) {
                     this.containsParserRules = true;
                     
-                    if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
-                        throw new Error('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
-                    }
                     this.parserGrammarRules.push(grammarRule);
                     parserGrammarRuleId++;
-                } else {
-                    throw new Error('A grammar rule must be a tokenizer or a parser grammar rule.');
                 }
+
             }            
         }
         this.processGrammarRules();
@@ -98,6 +103,8 @@ class DRegExp {
         this.parserGrammarRuleIdsByParserAndPercedenceGroup = {};
         for (parserGrammarRuleId = 0; parserGrammarRuleId < this.parserGrammarRules.length; parserGrammarRuleId++) {
             let parserGrammarRule = this.parserGrammarRules[parserGrammarRuleId];
+
+            let parser = parserGrammarRule.parser;
 
             if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
                 this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser] = [];
