@@ -4,14 +4,16 @@ var drx = new DRegExp();
 
 function updateTable() {
         let data = [];
-        for (let nodeType of drx.nodeTypes) {
-            console.log(nodeType);
-            if (nodeType == '?') {
-                continue;
-            }
-            let rule = drx.grammarRules[nodeType];
+
+        for (let nodeType in drx.tokenizerGrammarRules) {
+            let rule = drx.tokenizerGrammarRules[nodeType];
             data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
         }
+        
+        for (let rule of drx.parserGrammarRules) {
+            data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
+        }
+
         $('#mytable').jexcel({
             data:data,
             colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100],
