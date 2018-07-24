@@ -8,14 +8,14 @@ class DRegExp {
 
     resetGrammarRules() {
         this.mainParser = null;
-        
+
         this.nodeTypes = ['?']; // Array of all node types.
                                 // The first nodeType is a special one for unrecognized characters
         this.nodeTypeIds = {'?':0}; // nodeTypeId = this.nodeTypeIds[nodeType]
         this.nodeGroups = {}; // arrayOfNodeTypesInGroup = this.nodeGroups[nodeGroup]
 
         this.containsParserRules = false;
-        
+
         this.tokenizerGrammarRules = {}; // tokenizerGrammarRule = this.tokenizerGrammarRules[nodeType]
         this.tokenDefiningTokenizerNodeTypes = []; // arrayOfTokenDefiningNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser]
                                                    // Some tokenizer grammar rules are used only in other tokenizer grammar
@@ -46,7 +46,7 @@ class DRegExp {
             }
 
             // Add the node type:
-            let nodeType = this.validateName(grammarRule.nodetype);            
+            let nodeType = this.validateName(grammarRule.nodetype);
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
                 throw new Error('nodeType ' + nodeType + ' is already declared as a nodeGroup');
             }
@@ -88,15 +88,15 @@ class DRegExp {
 
                 if (isParserGrammarRule) {
                     this.containsParserRules = true;
-                    
+
                     this.parserGrammarRules.push(grammarRule);
                     parserGrammarRuleId++;
                 }
 
-            }            
+            }
         }
         this.processGrammarRules();
-    }f
+    }
 
     processGrammarRules() {
         // Populate this.parserGrammarRuleIdsByParserAndPercedenceGroup
@@ -116,11 +116,11 @@ class DRegExp {
             } else {
                 this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser]
                     .push({percedence: parserGrammarRule.precedence, parserGrammarRuleIds: [parserGrammarRuleId]});
-                
+
                 prevPrecedence = parserGrammarRule.precedence;
             }
         }
-        
+
         let tokenizerSubNodeTypes = [];
         for (let noteType in this.tokenizerGrammarRules) {
             tokenizerSubNodeTypes = this.extractNodeTypes(tokenizerSubNodeTypes, this.tokenizerGrammarRules[nodeType].tokenizepattern);
@@ -128,7 +128,7 @@ class DRegExp {
 
         let parserSubNodeTypes = [];
         for (let parserGrammarRule of this.parserGrammarRules) {
-            parserSubNodeTypes = this.extractNodeTypes(parserSubNodeTypes, parserGrammarRule.parsepattern);        
+            parserSubNodeTypes = this.extractNodeTypes(parserSubNodeTypes, parserGrammarRule.parsepattern);
         }
 
         for (let nodeType in this.tokenizerGrammarRules) {
@@ -214,10 +214,10 @@ class DRegExp {
 
     _tokenize(inputString, options) {
         let parser = options.parser || this.mainParser;
-        if (!this.tokenizerNodeTypes.hasOwnProperty(parser)) {
+        if (!this.tokenDefiningTokenizerNodeTypes.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
-        let tokenizerNodeTypes = this.tokenizerNodeTypes[parser];
+        let tokenizerNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser];
         let re = this.tokenizeRegExp(parser);
         let rx = re.regexp;
         console.log('regexp: ' + rx);
@@ -242,7 +242,7 @@ class DRegExp {
                     throw new Error('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
                 }
                 matched = true;
-                let subParser = this.grammarRules[nodeType].subparser;
+                let subParser = this.tokenizerGrammarRules[nodeType].subparser;
                 if (subParser) {
                     this._tokenize(matchedStr, Object.assign(options, {parser: subParser}));
                 } else if (!this.tokenizerUnusedNodeTypes[parser].includes(nodeType)) {
@@ -300,7 +300,8 @@ class DRegExp {
                         }
                         matched = true;
                         subNodeString = m[i+1];
-                        nodeType = this.parserGrammarRuleIdsByParserAndPercedenceGroup[percedenceGroup.parserGrammarRuleIds[i]].nodeType;
+                        let parserGrammarRuleId = percedenceGroup.parserGrammarRuleIds[i];
+                        nodeType = this.parserGrammarRules[parserGrammarRuleId].nodetype;
                     }
                     if (!matched) {
                         throw new Error('no capture group matched: ' + percedenceGroup.percedence);
@@ -323,7 +324,7 @@ class DRegExp {
                     if (subNodes.length == 0) {
                         throw new Error('unable to parse: ' + subNodeString);
                     }
-                    let subParser = this.grammarRules[nodeType].subparser;
+                    let subParser = this.parserGrammarRules[parserGrammarRuleId].subparser;
                     if (subParser) {
                         tokenNodes[nodeId++] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
                     } else {
