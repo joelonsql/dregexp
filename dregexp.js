@@ -105,30 +105,26 @@ class DRegExp {
 
             if (prevPrecedence && prevPrecedence === parserGrammarRule.precedence) {
                 let lastPercedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].length - 1;
-                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][lastPercedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleIds);
+                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][lastPercedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleId);
             } else {
-                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].push({percedence: parserGrammarRule.precedence, nodeTypes: [nodeType]});
+                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser]
+                    .push({percedence: parserGrammarRule.precedence, parserGrammarRuleIds: [parserGrammarRuleId]});
                 
                 prevPrecedence = parserGrammarRule.precedence;
             }
         }
         
         let tokenizerSubNodeTypes = [];
-        for (tokenizerGrammarRule in this.tokenizerGrammarRules) {
-            tokenizerSubNodeTypes = this.extractNodeTypes(tokenizerSubNodeTypes, tokenizerGrammarRule.tokenizepattern);
+        for (let noteType in this.tokenizerGrammarRules) {
+            tokenizerSubNodeTypes = this.extractNodeTypes(tokenizerSubNodeTypes, this.tokenizerGrammarRules[nodeType].tokenizepattern);
         }
 
         let parserSubNodeTypes = [];
-        for (parserGrammarRule in this.parserGrammarRules) {
+        for (let parserGrammarRule of this.parserGrammarRules) {
             parserSubNodeTypes = this.extractNodeTypes(parserSubNodeTypes, parserGrammarRule.parsepattern);        
         }
 
-        // Populate this.tokenDefiningTokenizerNodeTypes and this.tokenizerUnusedNodeTypes:
-        let TokenizerNodeTypes = allTokenizeNodeTypes
-        if (tokenizerGrammarRule in this.tokenizerGrammarRules) {
-            tokenizerGrammarRule.nodetype;
-        }
-        for (let nodeType of allTokenizeNodeTypes) {
+        for (let nodeType in this.tokenizerGrammarRules) {
             let parser = this.tokenizerGrammarRules[nodeType].parser;
             if (parserSubNodeTypes.includes(nodeType)) {
                 this.tokenDefiningTokenizerNodeTypes[parser].push(nodeType);
