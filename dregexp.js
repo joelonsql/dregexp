@@ -24,7 +24,7 @@ class DRegExp {
         this.tokenizerUnusedNodeTypes = []; // arrayOfUnusedTokenizerNodeTypes = this.tokenizerUnusedNodeTypes[parser]
 
         this.parserGrammarRules = []; // parserGrammarRule = parserGrammarRules[parserGrammarRuleId]
-        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {}; // { percedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPercedenceGroupByParserAndPercedenceGroup[parser][percedenceGroupIndex]
+        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {}; // { percedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][percedenceGroupIndex]
 
         this.numNodes = 0;
     }
@@ -96,14 +96,14 @@ class DRegExp {
     processGrammarRules() {
         // Populate this.parserGrammarRuleIdsByParserAndPercedenceGroup
         this.parserGrammarRuleIdsByParserAndPercedenceGroup = {};
-        for (parserGrammarRuleId = 0; parserGrammarRuleId != this.parserGrammarRules.length; parserGrammarRuleId++) {
+        for (parserGrammarRuleId = 0; parserGrammarRuleId < this.parserGrammarRules.length; parserGrammarRuleId++) {
             let parserGrammarRule = this.parserGrammarRules[parserGrammarRuleId];
 
             if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
                 this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser] = [];
             }
 
-            if (prevPrecedence && prevPrecedence == parserGrammarRule.precedence) {
+            if (prevPrecedence && prevPrecedence === parserGrammarRule.precedence) {
                 let lastPercedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].length - 1;
                 this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][lastPercedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleIds);
             } else {
