@@ -72,17 +72,13 @@ class DRegExp {
                 let isTokenizerGrammarRule = grammarRule.tokenizepattern && grammarRule.tokenizepattern.length > 0;
                 let isParserGrammarRule = grammarRule.parsepattern && grammarRule.parsepattern.length > 0;
 
-                if (isTokenizerGrammarRule && isParserGrammarRule) {
-                    throw new Error('A grammar rule cannot be both a tokenizer and a parser grammar rule.');
-                }
-
                 if (isTokenizerGrammarRule) {
                     if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
                         throw new Error('Duplicate nodeType ' + nodeType + ' among tokenizer grammar rules.');
                     }
                     this.tokenizerGrammarRules[nodeType] = grammarRule;
                 } else if (isParserGrammarRule) {
-                    containsParserRules = true;
+                    this.containsParserRules = true;
                     
                     if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
                         throw new Error('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
