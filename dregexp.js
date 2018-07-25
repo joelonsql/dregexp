@@ -24,7 +24,7 @@ class DRegExp {
         this.tokenizerUnusedNodeTypes = []; // arrayOfUnusedTokenizerNodeTypes = this.tokenizerUnusedNodeTypes[parser]
 
         this.parserGrammarRules = []; // parserGrammarRule = parserGrammarRules[parserGrammarRuleId]
-        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {}; // { percedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][percedenceGroupIndex]
+        this.parserGrammarRuleIdsByParserAndPrecedenceGroup = {}; // { precedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser][precedenceGroupIndex]
 
         this.nodeTypePrimitiveType = {}; // primitiveType = this.nodeTypePrimitiveType[nodeType]
 
@@ -119,24 +119,24 @@ class DRegExp {
     }
 
     processGrammarRules() {
-        // Populate this.parserGrammarRuleIdsByParserAndPercedenceGroup
-        this.parserGrammarRuleIdsByParserAndPercedenceGroup = {};
+        // Populate this.parserGrammarRuleIdsByParserAndPrecedenceGroup
+        this.parserGrammarRuleIdsByParserAndPrecedenceGroup = {};
         for (let parserGrammarRuleId = 0; parserGrammarRuleId < this.parserGrammarRules.length; parserGrammarRuleId++) {
             let parserGrammarRule = this.parserGrammarRules[parserGrammarRuleId];
 
             let parser = parserGrammarRule.parser;
 
-            if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
-                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser] = [];
+            if (!this.parserGrammarRuleIdsByParserAndPrecedenceGroup.hasOwnProperty(parser)) {
+                this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser] = [];
             }
 
             let prevPrecedence;
             if (prevPrecedence && prevPrecedence === parserGrammarRule.precedence) {
-                let lastPercedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser].length - 1;
-                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][lastPercedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleId);
+                let lastPrecedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser].length - 1;
+                this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser][lastPrecedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleId);
             } else {
-                this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser]
-                    .push({percedence: parserGrammarRule.precedence, parserGrammarRuleIds: [parserGrammarRuleId]});
+                this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]
+                    .push({precedence: parserGrammarRule.precedence, parserGrammarRuleIds: [parserGrammarRuleId]});
 
                 prevPrecedence = parserGrammarRule.precedence;
             }
@@ -290,7 +290,7 @@ class DRegExp {
 
     parse(tokenNodes, options = {}) {
         let parser = options.parser || this.mainParser;
-        if (!this.parserGrammarRuleIdsByParserAndPercedenceGroup.hasOwnProperty(parser)) {
+        if (!this.parserGrammarRuleIdsByParserAndPrecedenceGroup.hasOwnProperty(parser)) {
             throw new Error('no rules defined for parser: ' + parser);
         }
         let nodeString = '';
@@ -305,15 +305,15 @@ class DRegExp {
         console.log('nodeString: ' + nodeString);
         for (let didWork = true; didWork; ) {
             didWork = false;
-            for (let percedenceGroup of this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser]) {
+            for (let precedenceGroup of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
                 let parserGrammarRuleId = null;
                 let nodeType = null;
-                let re = this.parseRegExp(percedenceGroup.parserGrammarRuleIds, errorRecovery);
+                let re = this.parseRegExp(precedenceGroup.parserGrammarRuleIds, errorRecovery);
                 let m;
                 let lastIndex = 0;
                 let newNodeString = '';
                 while (m = re.exec(nodeString)) {
-                    if (m.length != percedenceGroup.parserGrammarRuleIds.length + 1) {
+                    if (m.length != precedenceGroup.parserGrammarRuleIds.length + 1) {
                         throw new Error('different number of capture groups than node types for given precedence');
                     } else if (m.index > lastIndex) {
                         newNodeString += nodeString.slice(lastIndex, m.index);
@@ -322,19 +322,19 @@ class DRegExp {
                     let matched = false;
                     let matchedStr = m[0];
                     let subNodeString = null;
-                    for (let i=0; i < percedenceGroup.parserGrammarRuleIds.length; i++) {
+                    for (let i=0; i < precedenceGroup.parserGrammarRuleIds.length; i++) {
                         if (m[i+1] == null) {
                             continue;
                         } else if (matched) {
-                            throw new Error('multiple capture groups matched for percedence "' + percedenceGroup.percedence + '" : ' + percedenceGroup.nodeTypes[i]);
+                            throw new Error('multiple capture groups matched for precedence "' + precedenceGroup.precedence + '" : ' + precedenceGroup.nodeTypes[i]);
                         }
                         matched = true;
                         subNodeString = m[i+1];
-                        parserGrammarRuleId = percedenceGroup.parserGrammarRuleIds[i];
+                        parserGrammarRuleId = precedenceGroup.parserGrammarRuleIds[i];
                         nodeType = this.parserGrammarRules[parserGrammarRuleId].nodetype;
                     }
                     if (!matched) {
-                        throw new Error('no capture group matched: ' + percedenceGroup.percedence);
+                        throw new Error('no capture group matched: ' + precedenceGroup.precedence);
                     }
                     matchedStr = matchedStr.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
                     newNodeString += matchedStr;
