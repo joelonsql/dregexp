@@ -310,15 +310,11 @@ class DRegExp {
                 let nodeType = null;
                 let re = this.parseRegExp(precedenceGroup.parserGrammarRuleIds, errorRecovery);
                 let m;
-                let lastIndex = 0;
                 let newNodeString = '';
                 while (m = re.exec(nodeString)) {
                     if (m.length != precedenceGroup.parserGrammarRuleIds.length + 1) {
                         throw new Error('different number of capture groups than node types for given precedence');
-                    } else if (m.index > lastIndex) {
-                        newNodeString += nodeString.slice(lastIndex, m.index);
                     }
-                    lastIndex = re.lastIndex;
                     let matched = false;
                     let matchedStr = m[0];
                     let subNodeString = null;
@@ -337,7 +333,8 @@ class DRegExp {
                         throw new Error('no capture group matched: ' + precedenceGroup.precedence);
                     }
                     matchedStr = matchedStr.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
-                    newNodeString += matchedStr;
+                    nodeString = nodeString.slice(0, m.index) + matchedStr + nodeString.slice(re.lastIndex, nodeString.length);
+                    re.lastIndex = m.index;
                     let subNodes = [];
                     let subLastIndex = 0;
                     let subNode;
@@ -365,13 +362,6 @@ class DRegExp {
                         break;
                     }
                     didWork = true;
-//                    break; // FIXME while() should be eliminated
-                }
-                if (lastIndex > 0) {
-                    if (nodeString.length > lastIndex) {
-                        newNodeString += nodeString.slice(lastIndex, nodeString.length);
-                    }
-                    nodeString = newNodeString;
                 }
                 if (this.maxNodes && nodeId >= this.maxNodes) {
                     didWork = false;
