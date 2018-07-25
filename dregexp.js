@@ -28,6 +28,8 @@ class DRegExp {
 
         this.nodeTypePrimitiveType = {}; // primitiveType = this.nodeTypePrimitiveType[nodeType]
 
+        this.grammarRules = []; // All rules for both tokenizer and parser in the original order they were loaded
+
         this.numNodes = 0;
     }
 
@@ -36,6 +38,11 @@ class DRegExp {
         let parserGrammarRuleId = this.parserGrammarRules.length;
         for (let grammarRule of csvInputArrayOfHashes) {
             let parser = grammarRule.parser;
+
+            // Save all grammar rules so we don't need complex
+            // merge logic to recreate them when we want to
+            // export the rules in CSV format
+            this.grammarRules.push(grammarRule);
 
             // Skip empty lines:
             if (!grammarRule.parser) {

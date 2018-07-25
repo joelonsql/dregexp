@@ -3,20 +3,15 @@
 var drx = new DRegExp();
 
 function updateTable() {
-        let data = [];
-        for (let nodeType of drx.nodeTypes) {
-            console.log(nodeType);
-            if (nodeType == '?') {
-                continue;
-            }
-            let rule = drx.grammarRules[nodeType];
-            data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
-        }
-        $('#mytable').jexcel({
-            data:data,
-            colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100],
-            colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
-        });
+    let data = [];
+    for (let rule of drx.grammarRules) {
+        data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
+    }
+    $('#mytable').jexcel({
+        data:data,
+        colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100],
+        colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
+    });
 }
 
 function updateChart(containerId, parseTree) {
@@ -100,6 +95,7 @@ function parseAndDrawTree() {
             let parseTree = drx.parse(tokenNodes);
             updateChart('#parseTree', parseTree);
             updateTable();
+            console.log('FOOBAR');
             let debugInfo = [];
             drx.compareParseTrees(parseTree, rustcParseTree, debugInfo);
             document.getElementById('debugInfo').innerHTML
