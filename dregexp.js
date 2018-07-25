@@ -26,6 +26,8 @@ class DRegExp {
         this.parserGrammarRules = []; // parserGrammarRule = parserGrammarRules[parserGrammarRuleId]
         this.parserGrammarRuleIdsByParserAndPercedenceGroup = {}; // { percedence, parserGrammarRuleIds } = this.parserGrammarRuleIdsByParserAndPercedenceGroup[parser][percedenceGroupIndex]
 
+        this.nodeTypePrimitiveType = {}; // primitiveType = this.nodeTypePrimitiveType[nodeType]
+
         this.numNodes = 0;
     }
 
@@ -71,6 +73,7 @@ class DRegExp {
             {
                 let isTokenizerGrammarRule = grammarRule.tokenizepattern && grammarRule.tokenizepattern.length > 0;
                 let isParserGrammarRule = grammarRule.parsepattern && grammarRule.parsepattern.length > 0;
+                let isPrimitiveType = grammarRule.primitivetype && grammarRule.primitivetype.length > 0;
 
                 if (!isTokenizerGrammarRule && !isParserGrammarRule) {
                     throw new Error('A grammar rule must have tokenizer pattern or a parser pattern or both.');
@@ -91,6 +94,16 @@ class DRegExp {
 
                     this.parserGrammarRules.push(grammarRule);
                     parserGrammarRuleId++;
+                }
+
+                if (isPrimitiveType) {
+                    if (this.nodeTypePrimitiveType.hasOwnProperty(nodeType)) {
+                        if (this.nodeTypePrimitiveType[nodeType] !== grammarRule.primitivetype) {
+                            throw new Error('Different primitiveTypes for same nodeType ' + nodeType + ' among grammar rules.');
+                        }
+                    } else {
+                        this.nodeTypePrimitiveType[nodeType] = grammarRule.primitivetype;
+                    }
                 }
 
             }
@@ -345,7 +358,7 @@ class DRegExp {
                         break;
                     }
                     didWork = true;
-                    break; // FIXME while() should be eliminated
+//                    break; // FIXME while() should be eliminated
                 }
                 if (lastIndex > 0) {
                     if (nodeString.length > lastIndex) {
@@ -464,7 +477,7 @@ class DRegExp {
                 if (child[0] == '?') {
                     continue;
                 }
-                let isPrimitiveType = this.grammarRules[child[0]].primitivetype;
+                let isPrimitiveType = this.nodeTypePrimitiveType.hasOwnProperty(child[0]);
                 let singleChild = child[1].constructor === Array && child[1].length == 1;
                 let multipleChildren = child[1].constructor === Array && child[1].length > 1;
 
