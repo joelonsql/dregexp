@@ -121,6 +121,7 @@ class DRegExp {
     processGrammarRules() {
         // Populate this.parserGrammarRuleIdsByParserAndPrecedenceGroup
         this.parserGrammarRuleIdsByParserAndPrecedenceGroup = {};
+        let prevPrecedence;
         for (let parserGrammarRuleId = 0; parserGrammarRuleId < this.parserGrammarRules.length; parserGrammarRuleId++) {
             let parserGrammarRule = this.parserGrammarRules[parserGrammarRuleId];
 
@@ -130,7 +131,6 @@ class DRegExp {
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser] = [];
             }
 
-            let prevPrecedence;
             if (prevPrecedence && prevPrecedence === parserGrammarRule.precedence) {
                 let lastPrecedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser].length - 1;
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser][lastPrecedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleId);
@@ -546,12 +546,6 @@ class DRegExp {
                 }
                 delete r.tokenizepatterns;
             }
-            if (r.parsepatterns) {
-                if (r.parsepatterns.length > 0) {
-                    r.parsepattern = '(' + r.parsepatterns.join('|') + ')';
-                }
-                delete r.parsepatterns;
-            }
         }
         let tokens = this.unparseWithPaths(parseTree);
         csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
@@ -560,20 +554,44 @@ class DRegExp {
 
     _deriveGrammar(parser, parseTree, csvInputArrayOfHashes) {
         let nodeType = parseTree[0];
+        let tokenizePattern;
+        let parsePattern;
+        if (typeof(parseTree[1]) === 'string') {
+            tokenizePattern = this.tokenEscape(parseTree[1]);
+        } else {
+            let parsePatternNodeTypes = [];
+            for (let subTree of parseTree[1]) {
+                parsePatternNodeTypes.push(subTree[0]);
+                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes);
+            }
+            parsePattern = '(' + parsePatternNodeTypes.join(' ') + ')';
+        }
+
         let rule;
+        // Check if pattern already exists and return if so
         for (let r of csvInputArrayOfHashes) {
-            if (r.nodetype == nodeType) {
-                rule = r;
-                break;
+            if (typeof(parseTree[1]) === 'string') {
+                if (nodeType === r.nodetype) {
+                    if (r.tokenizepatterns.length > 0 && r.tokenizepatterns.includes(tokenizePattern)) {
+                        return;
+                    } else {
+                        rule = r;
+                    }
+                }
+            } else {
+                if (r.parsepattern.length > 0 && r.parsepattern === parsePattern) {
+                    return;
+                }
             }
         }
+
+        // Inject new rule at beginning if necessary
         if (rule == undefined) {
             rule = {
                 parser: parser,
                 nodetype: nodeType,
                 tokenizepatterns: [],
                 tokenizepattern: '',
-                parsepatterns: [],
                 parsepattern: '',
                 primitivetype: '',
                 nodegroup: '',
@@ -582,22 +600,14 @@ class DRegExp {
             };
             csvInputArrayOfHashes.unshift(rule);
         }
+
         if (typeof(parseTree[1]) === 'string') {
-            let pat = this.tokenEscape(parseTree[1]);
-            if (!rule.tokenizepatterns.includes(pat)) {
-                rule.tokenizepatterns.push(pat);
-            }
+            rule.tokenizepatterns.push(tokenizePattern);
         } else {
-            let parsePatterns = [];
-            for (let subTree of parseTree[1]) {
-                parsePatterns.push(subTree[0]);
-                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes);
-            }
-            let pat = parsePatterns.join(' ');
-            if (!rule.parsepatterns.includes(pat) && pat != nodeType ) {
-                rule.parsepatterns.push(pat);
-            }
+            rule.parsepattern = parsePattern;
         }
+
+        return;
     }
 
     compareAndFixTokenizer(sourceCodeString, expectedTokens, csvInputArrayOfHashes) {
