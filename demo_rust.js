@@ -1,6 +1,7 @@
 'use strict';
 
 var drx = new DRegExp();
+var rustcParseTree;
 
 function updateTable() {
     let data = [];
@@ -48,14 +49,14 @@ function updateChart(containerId, parseTree) {
 }
 
 function parseAndDrawTree() {
-
         let inputString = document.getElementById('inputString').value;
         fetch("http://127.0.0.1:3000/", {
             method: "POST", 
             body: inputString
+        }).then(function(responseJson) {
+            return responseJson.json();
         }).then(function(response) {
-            return response.json();
-        }).then(function(rustcParseTree) {
+            rustcParseTree = response;
             updateChart('#parseTree2', rustcParseTree);
             let parser = rustcParseTree[0];
             let csvInputArrayOfHashes = [
@@ -91,16 +92,20 @@ function parseAndDrawTree() {
                 },
             ];
             csvInputArrayOfHashes = drx.deriveGrammar(inputString, rustcParseTree, csvInputArrayOfHashes);
-            let tokenNodes = drx.tokenize(inputString);
-            let parseTree = drx.parse(tokenNodes);
-            updateChart('#parseTree', parseTree);
-            updateTable();
-            console.log('FOOBAR');
-            let debugInfo = [];
-            drx.compareParseTrees(parseTree, rustcParseTree, debugInfo);
-            document.getElementById('debugInfo').innerHTML
-                = (debugInfo.length == 0 ? 'OK' : JSON.stringify(debugInfo))
-                + '<br/>' + drx.numNodes + ' nodes'
-                + '<br/>' + drx.maxNodes + ' max nodes';
+            _parseAndDrawTree();
         });
+}
+
+function _parseAndDrawTree() {
+        let inputString = document.getElementById('inputString').value;
+        let tokenNodes = drx.tokenize(inputString);
+        let parseTree = drx.parse(tokenNodes);
+        updateChart('#parseTree', parseTree);
+        updateTable();
+        let debugInfo = [];
+        drx.compareParseTrees(parseTree, rustcParseTree, debugInfo);
+        document.getElementById('debugInfo').innerHTML
+            = (debugInfo.length == 0 ? 'OK' : JSON.stringify(debugInfo))
+            + '<br/>' + drx.numNodes + ' nodes'
+            + '<br/>' + drx.maxNodes + ' max nodes';
 }

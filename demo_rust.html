@@ -43,7 +43,8 @@
                 }
                 drx = new DRegExp();
                 drx.loadGrammarRules(newGrammar);
-                parseAndDrawTree();
+                console.log(JSON.stringify(drx,null,4));
+                _parseAndDrawTree();
             });
             $('#emptyGrammar').on('click', function () {
                 $('#mytable').jexcel({
