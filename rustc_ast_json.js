@@ -77,8 +77,10 @@ class rustc_ast_json{
             }
         }
         let sortedTokens = [];
+        let tokenId = 0;
         for(let lo of Object.keys(this.tokensBytePos).sort(function(a, b){return a - b})) {
             this.identToKeyword(this.tokensBytePos[lo]);
+            this.tokensBytePos[lo][3] = tokenId++;
             sortedTokens.push(this.tokensBytePos[lo]);
         }
         return sortedTokens;
@@ -310,24 +312,24 @@ class rustc_ast_json{
             for (let o of newAST[lo]) {
                 while (this.tokens.length > 0 && this.tokens[0][2] < o.lo) {
                     let t = this.tokens.shift();
-                    parseTree.push([t[0], t[1]]);
+                    parseTree.push([t[0], t[1], {tokenId: t[3]}]);
                 }
                 let c = [];
                 while (this.tokens.length > 0 && this.tokens[0][2] >= o.lo && this.tokens[0][2] < this.peekLo(o.children)) {
                     let t = this.tokens.shift();
-                    c.push([t[0], t[1]]);
+                    c.push([t[0], t[1], {tokenId: t[3]}]);
                 }
                 if (Object.keys(o.children).length == 0) {
                     if (this.tokens.length > 0 && this.tokens[0][2] == o.lo) {
                         let t = this.tokens.shift();
-                        c.push([t[0], t[1]]);
+                        c.push([t[0], t[1], {tokenId: t[3]}]);
                     }
                 } else {
                     c = c.concat(this.buildParseTree(o.children));
                 }
                 while (this.tokens.length > 0 && this.tokens[0][2] < o.hi) {
                     let t = this.tokens.shift();
-                    c.push([t[0], t[1]]);
+                    c.push([t[0], t[1], {tokenId: t[3]}]);
                 }
                 if (c.length > 0) {
                     parseTree.push([o.nodeType, c]);

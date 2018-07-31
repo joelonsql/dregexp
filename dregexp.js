@@ -28,21 +28,16 @@ class DRegExp {
 
         this.nodeTypePrimitiveType = {}; // primitiveType = this.nodeTypePrimitiveType[nodeType]
 
-        this.grammarRules = []; // All rules for both tokenizer and parser in the original order they were loaded
+        this.validParseSteps = 0;
+        this.errorParserGrammarRuleId = null;
 
         this.numNodes = 0;
     }
 
     loadGrammarRules(csvInputArrayOfHashes) {
         let nodeTypeId = this.nodeTypes.length;
-        let parserGrammarRuleId = this.parserGrammarRules.length;
         for (let grammarRule of csvInputArrayOfHashes) {
             let parser = grammarRule.parser;
-
-            // Save all grammar rules so we don't need complex
-            // merge logic to recreate them when we want to
-            // export the rules in CSV format
-            this.grammarRules.push(grammarRule);
 
             // Skip empty lines:
             if (!grammarRule.parser) {
@@ -100,7 +95,6 @@ class DRegExp {
                     this.containsParserRules = true;
 
                     this.parserGrammarRules.push(grammarRule);
-                    parserGrammarRuleId++;
                 }
 
                 if (isPrimitiveType) {
@@ -131,10 +125,15 @@ class DRegExp {
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser] = [];
             }
 
-            if (prevPrecedence && prevPrecedence === parserGrammarRule.precedence) {
-                let lastPrecedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser].length - 1;
+            let lastPrecedenceGroupIndex = this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser].length - 1;
+            if (prevPrecedence != null && prevPrecedence === parserGrammarRule.precedence) {
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser][lastPrecedenceGroupIndex].parserGrammarRuleIds.push(parserGrammarRuleId);
             } else {
+                for (let p of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
+                    if (p.precedence === parserGrammarRule.precedence) {
+                        throw new Error('precedenceGroup ' + parserGrammarRule.precedence + ' already declared');
+                    }
+                }
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]
                     .push({precedence: parserGrammarRule.precedence, parserGrammarRuleIds: [parserGrammarRuleId]});
 
@@ -258,7 +257,7 @@ class DRegExp {
                 if (options.throwOnError) {
                     throw new Error('unable to tokenize ' + (m.index - lastIndex) + ' chars at pos ' + lastIndex + ' : "' + invalidString + '"');
                 }
-                this.tokenNodes.push(['?', invalidString]);
+                this.tokenNodes.push(['?', invalidString, {tokenId: this.tokenNodes.length}]);
             }
             lastIndex = rx.lastIndex;
             let matched = false;
@@ -275,7 +274,7 @@ class DRegExp {
                 if (subParser) {
                     this._tokenize(matchedStr, Object.assign(options, {parser: subParser}));
                 } else if (!this.tokenizerUnusedNodeTypes[parser].includes(nodeType)) {
-                    this.tokenNodes.push([nodeType, matchedStr]);
+                    this.tokenNodes.push([nodeType, matchedStr, {tokenId: this.tokenNodes.length}]);
                 }
             }
         }
@@ -284,7 +283,7 @@ class DRegExp {
             if (options.throwOnError) {
                 throw new Error('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
             }
-            this.tokenNodes.push(['?', invalidString]);
+            this.tokenNodes.push(['?', invalidString, {tokenId: this.tokenNodes.length}]);
         }
     }
 
@@ -296,77 +295,88 @@ class DRegExp {
         let nodeString = '';
         let nodeId = 0;
         let errorRecovery = '';
+        this.validParseSteps = 0;
         for (let node of tokenNodes) {
             nodeString += this.encodeNodeType(node[0]) + nodeId++ + ',';
             if (node[0] == '?' && !options.throwOnError) {
                 errorRecovery = '(?:' + this.encodeNodeType('?') + '\\d+,)?';
             }
         }
-        console.log('nodeString: ' + nodeString);
         for (let didWork = true; didWork; ) {
             didWork = false;
             for (let precedenceGroup of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
+                let re = this.parseRegExp(precedenceGroup.parserGrammarRuleIds, errorRecovery);
+//                console.log('nodeString: ' + this.decodeNodeString(nodeString));
+//                console.log('re: ' + this.decodeNodeString(re.toString()));
+                let m = re.exec(nodeString);
+                if (!m) {
+                    continue;
+                }
+                if (m.length != precedenceGroup.parserGrammarRuleIds.length + 1) {
+                    throw new Error('different number of capture groups than node types for given precedence');
+                }
+                let matched = false;
+                let matchedStr = m[0];
+                let subNodeString = null;
                 let parserGrammarRuleId = null;
                 let nodeType = null;
-                let re = this.parseRegExp(precedenceGroup.parserGrammarRuleIds, errorRecovery);
-                let m;
-                let newNodeString = '';
-                while (m = re.exec(nodeString)) {
-                    if (m.length != precedenceGroup.parserGrammarRuleIds.length + 1) {
-                        throw new Error('different number of capture groups than node types for given precedence');
+                for (let i=0; i < precedenceGroup.parserGrammarRuleIds.length; i++) {
+                    if (m[i+1] == null) {
+                        continue;
+                    } else if (matched) {
+                        throw new Error('multiple capture groups matched for precedence "' + precedenceGroup.precedence + '" : ' + precedenceGroup.nodeTypes[i]);
                     }
-                    let matched = false;
-                    let matchedStr = m[0];
-                    let subNodeString = null;
-                    for (let i=0; i < precedenceGroup.parserGrammarRuleIds.length; i++) {
-                        if (m[i+1] == null) {
-                            continue;
-                        } else if (matched) {
-                            throw new Error('multiple capture groups matched for precedence "' + precedenceGroup.precedence + '" : ' + precedenceGroup.nodeTypes[i]);
-                        }
-                        matched = true;
-                        subNodeString = m[i+1];
-                        parserGrammarRuleId = precedenceGroup.parserGrammarRuleIds[i];
-                        nodeType = this.parserGrammarRules[parserGrammarRuleId].nodetype;
-                    }
-                    if (!matched) {
-                        throw new Error('no capture group matched: ' + precedenceGroup.precedence);
-                    }
-                    matchedStr = matchedStr.replace(subNodeString, this.encodeNodeType(nodeType) + nodeId + ',');
-                    nodeString = nodeString.slice(0, m.index) + matchedStr + nodeString.slice(re.lastIndex, nodeString.length);
-                    re.lastIndex = m.index;
-                    let subNodes = [];
-                    let subLastIndex = 0;
-                    let subNode;
-                    let subRegexp = /([가-판])(\d+),/ug; // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
-                    while (subNode = subRegexp.exec(subNodeString)) {
-                        if (subNode.index > subLastIndex) {
-                            throw new Error('did not match immediately after previous match');
-                        }
-                        let subNodeType = this.decodeNodeType(subNode[1]);
-                        let subNodeId = subNode[2];
-                        subNodes.push(tokenNodes[subNodeId]);
-                        subLastIndex = subRegexp.lastIndex;
-                    }
-                    if (subNodes.length == 0) {
-                        throw new Error('unable to parse: ' + subNodeString);
-                    }
-                    let subParser = this.parserGrammarRules[parserGrammarRuleId].subparser;
-                    if (subParser) {
-                        tokenNodes[nodeId++] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
-                    } else {
-                        tokenNodes[nodeId++] = [nodeType, subNodes];
-                    }
-                    if (this.maxNodes && nodeId >= this.maxNodes) {
-                        didWork = false;
-                        break;
-                    }
-                    didWork = true;
+                    matched = true;
+                    subNodeString = m[i+1];
+                    parserGrammarRuleId = precedenceGroup.parserGrammarRuleIds[i];
+                    nodeType = this.parserGrammarRules[parserGrammarRuleId].nodetype;
                 }
+                if (!matched) {
+                    throw new Error('no capture group matched: ' + precedenceGroup.precedence);
+                }
+                let newNodeId = nodeId++;
+                let subNodes = [];
+                let subNodeTypes = [];
+                let subLastIndex = 0;
+                let subNode;
+                let subRegexp = /([가-판])(\d+),/ug; // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
+                while (subNode = subRegexp.exec(subNodeString)) {
+                    if (subNode.index > subLastIndex) {
+                        throw new Error('did not match immediately after previous match');
+                    }
+                    subNodeTypes.push(this.decodeNodeType(subNode[1]));
+                    let subNodeId = subNode[2];
+                    subNodes.push(tokenNodes[subNodeId]);
+                    subLastIndex = subRegexp.lastIndex;
+                }
+                if (subNodes.length == 0) {
+                    throw new Error('unable to parse: ' + subNodeString);
+                }
+                let subParser = this.parserGrammarRules[parserGrammarRuleId].subparser;
+                if (subParser) {
+                    tokenNodes[newNodeId] = this.parse(subNodes, Object.assign(options, {parser: subParser}));
+                } else {
+                    let subParseTree = [nodeType, subNodes];
+                    if (options.hasOwnProperty('expectedParseTree') && this.errorGrammarRuleId == null) {
+                        if (this.parseTreeContainsSubParseTree(options.expectedParseTree, subParseTree)) {
+                            this.validParseSteps++;
+                        } else if (this.errorParserGrammarRuleId == null) {
+                            console.log('ERROR after validParseSteps ' + this.validParseSteps + ' parserGrammarRuleId ' + parserGrammarRuleId + ' ' + nodeType + ' <- ' + subNodeTypes.join(' '));
+                            this.errorParserGrammarRuleId = parserGrammarRuleId;
+                        }
+                    }
+                    tokenNodes[newNodeId] = subParseTree;
+//                    console.log(nodeType + ' <- ' + subNodeTypes.join(' '));
+                }
+                matchedStr = matchedStr.replace(subNodeString, this.encodeNodeType(nodeType) + newNodeId + ',');
+                nodeString = nodeString.slice(0, m.index) + matchedStr + nodeString.slice(re.lastIndex, nodeString.length);
+                re.lastIndex = m.index;
                 if (this.maxNodes && nodeId >= this.maxNodes) {
                     didWork = false;
                     break;
                 }
+                didWork = true;
+                break;
             }
         }
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {
@@ -403,6 +413,14 @@ class DRegExp {
             throw new Error('invalid unicodeToken ' + unicodeToken);
         }
         return nodeType;
+    }
+
+    decodeNodeString(nodeString) {
+        let m;
+        while (m = nodeString.match(/([가-판])/u)) {
+            nodeString = nodeString.replace(m[1], this.decodeNodeType(m[1]));
+        }
+        return nodeString;
     }
 
     expandTokenizePattern(nodeType, visited = []) {
@@ -598,7 +616,7 @@ class DRegExp {
                 precedence: '',
                 subparser: ''
             };
-            csvInputArrayOfHashes.unshift(rule);
+            csvInputArrayOfHashes.push(rule);
         }
 
         if (typeof(parseTree[1]) === 'string') {
@@ -708,6 +726,85 @@ class DRegExp {
         }
     }
 
+    parseTreeContainsSubParseTree(parseTree, subParseTree) {
+        if (JSON.stringify(parseTree) === JSON.stringify(subParseTree)) {
+//            console.log('OK subParseTree: ' + JSON.stringify(subParseTree,null,4));
+            return true;
+        }
+        if (Array.isArray(parseTree[1])) {
+            for (let t of parseTree[1]) {
+                if (this.parseTreeContainsSubParseTree(t, subParseTree)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    exportGrammarRules() {
+        let grammarRules = [];
+        for (let i=1; i < this.nodeTypes.length; i++) {
+            if (this.tokenizerGrammarRules.hasOwnProperty(this.nodeTypes[i])) {
+                grammarRules.push(this.tokenizerGrammarRules[this.nodeTypes[i]]);
+            }
+        }
+        for (let parser in this.parserGrammarRuleIdsByParserAndPrecedenceGroup) {
+            for (let parserGroup of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
+                for (let parserGrammarRuleId of parserGroup.parserGrammarRuleIds) {
+                    grammarRules.push(this.parserGrammarRules[parserGrammarRuleId]);
+                }
+            }
+        }
+        return grammarRules.slice(0);
+    }
+
+    fixPrecedenceGroups() {
+        if (this.errorParserGrammarRuleId == null) {
+            return;
+        }
+        let moveParserGrammarRuleId = null;
+        let newParserGrammarRuleIdsByParserAndPrecedenceGroup = {};
+        for (let parser in this.parserGrammarRuleIdsByParserAndPrecedenceGroup) {
+            let newParserGroups = [];
+            let precedence = 1;
+            for (let parserGroup of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
+                let newParserGrammarRuleIds = [];
+                if (moveParserGrammarRuleId != null) {
+                    newParserGrammarRuleIds.push(moveParserGrammarRuleId);
+                    this.parserGrammarRules[moveParserGrammarRuleId].precedence = precedence;
+                    moveParserGrammarRuleId = null;
+                }
+                for (let parserGrammarRuleId of parserGroup.parserGrammarRuleIds) {
+                    if (parserGrammarRuleId === this.errorParserGrammarRuleId) {
+                        if (moveParserGrammarRuleId != null) {
+                            throw new Error('Duplicate parserGrammarRuleId ' + parserGrammarRuleId.toString());
+                        }
+                        moveParserGrammarRuleId = parserGrammarRuleId;
+                    } else {
+                        newParserGrammarRuleIds.push(parserGrammarRuleId);
+                        this.parserGrammarRules[parserGrammarRuleId].precedence = precedence;
+                        if (moveParserGrammarRuleId != null) {
+                            newParserGrammarRuleIds.push(moveParserGrammarRuleId);
+                            this.parserGrammarRules[moveParserGrammarRuleId].precedence = precedence;
+                            moveParserGrammarRuleId = null;
+                        }
+                    }
+                }
+                if (newParserGrammarRuleIds.length > 0) {
+                    newParserGroups.push({precedence: (precedence++).toString(), parserGrammarRuleIds: newParserGrammarRuleIds});
+                }
+            }
+            if (moveParserGrammarRuleId != null) {
+                this.parserGrammarRules[moveParserGrammarRuleId].precedence = precedence;
+                newParserGroups.push({precedence: (precedence++).toString(), parserGrammarRuleIds: [moveParserGrammarRuleId]});
+                moveParserGrammarRuleId = null;
+            }
+            newParserGrammarRuleIdsByParserAndPrecedenceGroup[parser] = newParserGroups;
+        }
+        console.log(JSON.stringify(newParserGrammarRuleIdsByParserAndPrecedenceGroup));
+        this.parserGrammarRuleIdsByParserAndPrecedenceGroup = newParserGrammarRuleIdsByParserAndPrecedenceGroup;
+        this.errorParserGrammarRuleId = null;
+    }
 
 }
 

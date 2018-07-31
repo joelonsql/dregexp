@@ -5,7 +5,7 @@ var rustcParseTree;
 
 function updateTable() {
     let data = [];
-    for (let rule of drx.grammarRules) {
+    for (let rule of drx.exportGrammarRules()) {
         data.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
     }
     $('#mytable').jexcel({
@@ -57,6 +57,7 @@ function parseAndDrawTree() {
             return responseJson.json();
         }).then(function(response) {
             rustcParseTree = response;
+            console.log('rustcParseTree:' + JSON.stringify(rustcParseTree,null,4));
             updateChart('#parseTree2', rustcParseTree);
             let parser = rustcParseTree[0];
             let csvInputArrayOfHashes = [
@@ -99,7 +100,21 @@ function parseAndDrawTree() {
 function _parseAndDrawTree() {
         let inputString = document.getElementById('inputString').value;
         let tokenNodes = drx.tokenize(inputString);
-        let parseTree = drx.parse(tokenNodes);
+        let options = {expectedParseTree: rustcParseTree};
+
+        let parseTree = drx.parse(tokenNodes.slice(0), options);
+        let seen = [];
+        while(drx.errorParserGrammarRuleId != null) {
+            console.log('ValidParseSteps: ' + drx.validParseSteps);
+            let grammarSerialized = JSON.stringify(drx.parserGrammarRuleIdsByParserAndPrecedenceGroup);
+            if (seen.includes(grammarSerialized)) {
+                console.log('Loop detected, fixPrecedenceGroups resulted in previously seen state.');
+                break;
+            }
+            seen.push(grammarSerialized);
+            drx.fixPrecedenceGroups();
+            parseTree = drx.parse(tokenNodes.slice(0), options);
+        }
         updateChart('#parseTree', parseTree);
         updateTable();
         let debugInfo = [];
