@@ -21,33 +21,39 @@
     <body>
         <h1>Demo of dregexp</h1>
         <div>Check out View -> Developer -> Develope Tools -> Console</div>
-        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">{"foo":{"bar":true}}</textarea>
+        <textarea id="inputString" rows="10" cols="100" oninput="parseAndDrawTree()">{"foo":{"bar":"baz"}}</textarea>
         <br/>
-        <input type="checkbox" id="eliminateUselessNodes" onchange="parseAndDrawTree()" checked="checked"/>Eliminate useless nodes
+        <div id="debugInfo"></div>
         <br/>
-        <div class="chart" id="parseTree"></div>
+        <div>Expected parse tree:</div>
+        <div class="chart" id="expectedParseTree"></div>
         <button id='reloadGrammar'>Reload grammar</button>
         <button id='emptyGrammar'>Empty grammar</button>
-        <div id="mytable"></div>
+        <div>Expected grammar:</div>
+        <div id="expectedGrammar"></div>
+        <div>Actual parse tree:</div>
+        <div class="chart" id="actualParseTree"></div>
+        <div>Actual grammar:</div>
+        <div id="actualGrammar"></div>
         <script>
             parseAndDrawTree();
             $('#reloadGrammar').on('click', function () {
-                let data = $('#mytable').jexcel('getData');
+                let data = $('#expectedGrammar').jexcel('getData');
                 let newGrammar = [];
                 for (let row of data) {
                     newGrammar.push({parser: row[0], nodetype: row[1], tokenizepattern: row[2], parsepattern: row[3], primitivetype: row[4], nodegroup: row[5], precedence: row[6], subparser: row[7]});
                 }
-                drx = new DRegExp();
-                drx.loadGrammarRules(newGrammar);
+                drxExpected = new DRegExp();
+                drxExpected.loadGrammarRules(newGrammar);
                 parseAndDrawTree();
             });
             $('#emptyGrammar').on('click', function () {
-                $('#mytable').jexcel({
+                $('#expectedGrammar').jexcel({
                     data:[['','','','','','','']],
                     colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100 ],
                     colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
                 });
-                drx = new DRegExp();
+                drxExpected = new DRegExp();
                 parseAndDrawTree();
             });
         </script>

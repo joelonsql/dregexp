@@ -556,6 +556,8 @@ class DRegExp {
 
     deriveGrammar(sourceCodeString, parseTree, csvInputArrayOfHashes = []) {
         let parser = parseTree[0];
+        let tokens = this.unparse(parseTree);
+        console.log('tokens:'+JSON.stringify(tokens));
         this._deriveGrammar(parser, parseTree, csvInputArrayOfHashes);
         for(let r of csvInputArrayOfHashes) {
             if (r.tokenizepatterns) {
@@ -565,12 +567,46 @@ class DRegExp {
                 delete r.tokenizepatterns;
             }
         }
-        let tokens = this.unparseWithPaths(parseTree);
+
+        this.fixContextSensitive(csvInputArrayOfHashes);
+
         csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
         return csvInputArrayOfHashes;
     }
 
-    _deriveGrammar(parser, parseTree, csvInputArrayOfHashes) {
+    fixContextSensitive(csvInputArrayOfHashes) {
+        let parsePatterns = {};
+        for(let r of csvInputArrayOfHashes) {
+            if (r.parsepattern.length > 0) {
+                if (!parsePatterns.hasOwnProperty(r.parser)) {
+                    parsePatterns[r.parser] = {};
+                }
+                if (!parsePatterns[r.parser].hasOwnProperty(r.parsepattern)) {
+                    parsePatterns[r.parser][r.parsepattern] = [];
+                }
+                if (!parsePatterns[r.parser][r.parsepattern].includes(r.nodetype)) {
+                    parsePatterns[r.parser][r.parsepattern].push(r.nodetype);
+                }
+            }
+        }
+        for(let r of csvInputArrayOfHashes) {
+            if (r.parsepattern.length > 0) {
+                if (parsePatterns[r.parser][r.parsepattern].length > 1) {
+                    if (r.leftnodetype) {
+                        r.parsepattern = r.leftnodetype + ' ' + r.parsepattern;
+                    }
+                    if (r.rightnodetype) {
+                        r.parsepattern = r.parsepattern + ' ' + r.rightnodetype;
+                    }
+                    console.log('Fixed: ' + r.parsepattern + ' -> ' + r.nodetype);
+                }
+                delete r.leftnodetype;
+                delete r.rightnodetype;
+            }
+        }
+    }
+
+    _deriveGrammar(parser, parseTree, csvInputArrayOfHashes, leftNodeType = '', rightNodeType = '') {
         let nodeType = parseTree[0];
         let tokenizePattern;
         let parsePattern;
@@ -578,9 +614,18 @@ class DRegExp {
             tokenizePattern = this.tokenEscape(parseTree[1]);
         } else {
             let parsePatternNodeTypes = [];
-            for (let subTree of parseTree[1]) {
+            for (let i=0; parseTree[1][i]; i++) {
+                let subTree = parseTree[1][i];
+                let subLeftNodeType = '';
+                let subRightNodeType = '';
                 parsePatternNodeTypes.push(subTree[0]);
-                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes);
+                if (parseTree[1][i - 1]) {
+                    subLeftNodeType = parseTree[1][i - 1][0];
+                }
+                if (parseTree[1][i + 1]) {
+                    subRightNodeType = parseTree[1][i + 1][0];
+                }
+                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes, subLeftNodeType, subRightNodeType);
             }
             parsePattern = '(' + parsePatternNodeTypes.join(' ') + ')';
         }
@@ -597,7 +642,7 @@ class DRegExp {
                     }
                 }
             } else {
-                if (r.parsepattern.length > 0 && r.parsepattern === parsePattern) {
+                if (r.parsepattern.length > 0 && r.parsepattern === parsePattern && nodeType === r.nodetype && leftNodeType === r.leftnodetype && rightNodeType === r.rightnodetype) {
                     return;
                 }
             }
@@ -614,7 +659,9 @@ class DRegExp {
                 primitivetype: '',
                 nodegroup: '',
                 precedence: '',
-                subparser: ''
+                subparser: '',
+                leftnodetype: '',
+                rightnodetype: ''
             };
             csvInputArrayOfHashes.push(rule);
         }
@@ -623,21 +670,17 @@ class DRegExp {
             rule.tokenizepatterns.push(tokenizePattern);
         } else {
             rule.parsepattern = parsePattern;
+            rule.leftnodetype = leftNodeType;
+            rule.rightnodetype = rightNodeType;
         }
 
         return;
     }
 
     compareAndFixTokenizer(sourceCodeString, expectedTokens, csvInputArrayOfHashes) {
-        console.log('compareAndFixTokenizer: ' + JSON.stringify({
-            sourceCodeString: sourceCodeString,
-            expectedTokens: expectedTokens,
-            csvInputArrayOfHashes: csvInputArrayOfHashes
-        },null,4));
         this.resetGrammarRules();
         this.loadGrammarRules(csvInputArrayOfHashes);
         let resultTokens = this.tokenize(sourceCodeString);
-        console.log('result tokens: ' + resultTokens.length + ' ' + JSON.stringify(resultTokens,null,4));
         let isEqual = resultTokens.length == expectedTokens.length;
         let i;
         for (i = 0; resultTokens[i] && expectedTokens[i]; i++) {
@@ -681,14 +724,12 @@ class DRegExp {
         return this.compareAndFixTokenizer(sourceCodeString, expectedTokens, newCsvInputArrayOfHashes);
     }
 
-    unparseWithPaths(parseTree, path = [], tokens = []) {
+    unparse(parseTree, tokens = []) {
         if (typeof(parseTree[1]) === 'string') {
-            tokens.push([parseTree[0], parseTree[1], path]);
+            tokens.push(parseTree);
         } else {
-            let nodeType = parseTree[0];
-            path.unshift(nodeType);
-            for (let node of parseTree[1]) {
-                this.unparseWithPaths(node, path.slice(0), tokens);
+            for (let subTree of parseTree[1]) {
+                this.unparse(subTree, tokens);
             }
         }
         return tokens;
