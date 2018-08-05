@@ -702,6 +702,7 @@ class DRegExp {
                 }
             } else {
                 if (r.parsepattern.length > 0 && r.parsepattern === parsePattern && nodeType === r.nodetype && leftNodeType === r.leftnodetype && rightNodeType === r.rightnodetype) {
+//                    The return below is commented out because we need all occurrences, even if they are the same, in order for the fixContextSensitive() algo to work, as it counts parse patterns.
 //                    return;
                 }
             }
