@@ -568,42 +568,101 @@ class DRegExp {
             }
         }
 
-        this.fixContextSensitive(csvInputArrayOfHashes);
+        csvInputArrayOfHashes = this.fixContextSensitive(csvInputArrayOfHashes);
+
+        csvInputArrayOfHashes = this.filterDups(csvInputArrayOfHashes);
 
         csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
         return csvInputArrayOfHashes;
     }
 
+    filterDups(csvInputArrayOfHashes) {
+        let newCsvInputArrayOfHashes = [];
+        for(let r1 of csvInputArrayOfHashes) {
+            if (newCsvInputArrayOfHashes.some(r2 => r2.parser === r1.parser && r2.tokenizepattern === r1.tokenizepattern && r2.parsepattern === r1.parsepattern && r2.nodetype === r1.nodetype)) {
+                console.log('Skipping dup rule: ' + JSON.stringify(r1));
+                continue;
+            }
+            newCsvInputArrayOfHashes.push(r1);
+        }
+        return newCsvInputArrayOfHashes;
+    }
+
     fixContextSensitive(csvInputArrayOfHashes) {
-        let parsePatterns = {};
+        let contexts = {};
         for(let r of csvInputArrayOfHashes) {
             if (r.parsepattern.length > 0) {
-                if (!parsePatterns.hasOwnProperty(r.parser)) {
-                    parsePatterns[r.parser] = {};
+                if (!contexts.hasOwnProperty(r.parser)) {
+                    contexts[r.parser] = {};
                 }
-                if (!parsePatterns[r.parser].hasOwnProperty(r.parsepattern)) {
-                    parsePatterns[r.parser][r.parsepattern] = [];
+                if (!contexts[r.parser].hasOwnProperty(r.parsepattern)) {
+                    contexts[r.parser][r.parsepattern] = {leftnodetype: {}, rightnodetype: {}, resultNodeTypes: [], maxCount: 0, mostSelectiveContext: null};
                 }
-                if (!parsePatterns[r.parser][r.parsepattern].includes(r.nodetype)) {
-                    parsePatterns[r.parser][r.parsepattern].push(r.nodetype);
+                console.log(JSON.stringify(r));
+                for(let context of ['leftnodetype','rightnodetype']) {
+                    if (r[context]) {
+                        if (!contexts[r.parser][r.parsepattern][context].hasOwnProperty(r[context])) {
+                            contexts[r.parser][r.parsepattern][context][r[context]] = {};
+                        }
+                        if (!contexts[r.parser][r.parsepattern][context][r[context]].hasOwnProperty(r.nodetype)) {
+                            contexts[r.parser][r.parsepattern][context][r[context]][r.nodetype] = 0;
+                        }
+                        contexts[r.parser][r.parsepattern][context][r[context]][r.nodetype]++;
+                    }
+                }
+                if (!contexts[r.parser][r.parsepattern].resultNodeTypes.includes(r.nodetype)) {
+                    contexts[r.parser][r.parsepattern].resultNodeTypes.push(r.nodetype);
                 }
             }
         }
+        let isAmbiguous = false;
+        for(let parser in contexts) {
+            for(let parsepattern in contexts[parser]) {
+                if (contexts[parser][parsepattern].resultNodeTypes.length < 2) {
+                    delete contexts[parser][parsepattern];
+                    continue;
+                }
+                isAmbiguous = true;
+                for(let context in contexts[parser][parsepattern]) {
+                    for(let contextNodeType in contexts[parser][parsepattern][context]) {
+                        if (Object.keys(contexts[parser][parsepattern][context][contextNodeType]).length === 1) {
+                            for(let resultNodeType in contexts[parser][parsepattern][context][contextNodeType]) {
+                                let count = contexts[parser][parsepattern][context][contextNodeType][resultNodeType];
+                                if (count > contexts[parser][parsepattern].maxCount) {
+                                    contexts[parser][parsepattern].maxCount = count;
+                                    contexts[parser][parsepattern].mostSelectiveContext = {contextSide: context, contextNodeType: contextNodeType, resultNodeType: resultNodeType};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        console.log('contexts:' + JSON.stringify(contexts,null,4));
+        if (!isAmbiguous) {
+            return csvInputArrayOfHashes;
+        }
+        let newCsvInputArrayOfHashes = [];
         for(let r of csvInputArrayOfHashes) {
-            if (r.parsepattern.length > 0) {
-                if (parsePatterns[r.parser][r.parsepattern].length > 1) {
-                    if (r.leftnodetype) {
+            if (contexts[r.parser] && contexts[r.parser][r.parsepattern]) {
+                let mostSelectiveContext = contexts[r.parser][r.parsepattern].mostSelectiveContext;
+                if (r[mostSelectiveContext.contextSide] === mostSelectiveContext.contextNodeType && r.nodetype === mostSelectiveContext.resultNodeType) {
+                    if (mostSelectiveContext.contextSide === 'leftnodetype') {
                         r.parsepattern = r.leftnodetype + ' ' + r.parsepattern;
-                    }
-                    if (r.rightnodetype) {
+                        console.log('new left parsepattern: ' + r.parsepattern);
+                        delete r.leftnodetype;
+                    } else if (mostSelectiveContext.contextSide === 'rightnodetype') {
                         r.parsepattern = r.parsepattern + ' ' + r.rightnodetype;
+                        console.log('new right parsepattern: ' + r.parsepattern);
+                        delete r.rightnodetype;
+                    } else {
+                        throw new Error('Unexpected contextSide: ' + mostSelectiveContext.contextSide);
                     }
-                    console.log('Fixed: ' + r.parsepattern + ' -> ' + r.nodetype);
                 }
-                delete r.leftnodetype;
-                delete r.rightnodetype;
             }
+            newCsvInputArrayOfHashes.push(r);
         }
+        return this.fixContextSensitive(newCsvInputArrayOfHashes);
     }
 
     _deriveGrammar(parser, parseTree, csvInputArrayOfHashes, leftNodeType = '', rightNodeType = '') {
@@ -643,7 +702,7 @@ class DRegExp {
                 }
             } else {
                 if (r.parsepattern.length > 0 && r.parsepattern === parsePattern && nodeType === r.nodetype && leftNodeType === r.leftnodetype && rightNodeType === r.rightnodetype) {
-                    return;
+//                    return;
                 }
             }
         }
