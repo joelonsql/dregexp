@@ -17,7 +17,7 @@ class DRegExp {
         this.containsParserRules = false;
 
         this.tokenizerGrammarRules = {}; // tokenizerGrammarRule = this.tokenizerGrammarRules[nodeType]
-        this.tokenDefiningTokenizerNodeTypes = []; // arrayOfTokenDefiningNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser]
+        this.tokenDefiningTokenizerNodeTypes = {}; // arrayOfTokenDefiningNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser]
                                                    // Some tokenizer grammar rules are used only in other tokenizer grammar
                                                    // rules and they do not define tokens. this.tokenDefiningTokenizerNodeTypes contains
                                                    // the node types of the tokenizer grammar rules that do define tokens.
@@ -289,9 +289,9 @@ class DRegExp {
 
     parse(tokenNodes, options = {}) {
         let parser = options.parser || this.mainParser;
-        if (!this.parserGrammarRuleIdsByParserAndPrecedenceGroup.hasOwnProperty(parser)) {
-            throw new Error('no rules defined for parser: ' + parser);
-        }
+        // if (!this.parserGrammarRuleIdsByParserAndPrecedenceGroup.hasOwnProperty(parser)) {
+        //     throw new Error('no rules defined for parser: ' + parser);
+        // }
         let nodeString = '';
         let nodeId = 0;
         let errorRecovery = '';
@@ -302,7 +302,7 @@ class DRegExp {
                 errorRecovery = '(?:' + this.encodeNodeType('?') + '\\d+,)?';
             }
         }
-        for (let didWork = true; didWork; ) {
+        for (let didWork = true; didWork && this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]; ) {
             didWork = false;
             for (let precedenceGroup of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
                 let re = this.parseRegExp(precedenceGroup.parserGrammarRuleIds, errorRecovery);
@@ -554,11 +554,95 @@ class DRegExp {
         return L;
     }
 
+    isInConflict(r1, r2) {
+        let rmin;
+        let rmax;
+        if (r1.length < r2.length) {
+            rmin = r1;
+            rmax = r2;
+        } else {
+            rmin = r2;
+            rmax = r1;
+        }
+        for (let offset=0; offset < rmax.length-rmin.length+1; offset++) {
+            if (JSON.stringify(rmax.slice(offset,offset+rmin.length)) === JSON.stringify(rmin)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    _updateState(stateArray, num) {
+        console.log('stateArray:' + stateArray);
+        console.log('num:' + num);
+        let sum = 0;
+        let maxValues = [];
+        for (let i = stateArray.length - 1; i >= 0; i--) {
+            maxValues[i] = num - sum;
+            sum = sum + stateArray[i];
+        }
+        console.log('maxValues:' + maxValues);
+        for (let i = 0; i < stateArray.length; i++) {
+            if (stateArray[i] != maxValues[i]) {
+                stateArray[i]++;
+                return false;
+            } else {
+                if (i == stateArray.length - 1) {
+                    return true;
+                }
+                stateArray[i] = 0;
+            }   
+        }
+    }
+
+    _conflictGroups(parsePatterns) {
+        let ruleGroups = [];
+        for (let parsePatternId1=0; parsePatternId1 < parsePatterns.length; parsePatternId1++) {
+            let isConflict = false;
+            group_loop:
+            for (let g of ruleGroups) {
+                for (let parsePatternId2 of g) {
+                    if (this.isInConflict(parsePatterns[parsePatternId1].parsePattern, parsePatterns[parsePatternId2].parsePattern)) {
+                        isConflict = true;
+                        console.log('isConflict === true, pushing parsePatternId1 ' + parsePatternId1);
+                        g.push(parsePatternId1);
+                        break group_loop;
+                    }
+                }
+            }
+            if (isConflict === false) {
+                console.log('isConflict === false, new group ' + parsePatternId1);
+                ruleGroups.push([parsePatternId1]);
+            }
+        }
+        return ruleGroups.filter(em => em.length > 1);
+    }
+
+    _getSumCombos(sum, num) {
+        let result = [];
+        let state = [];
+        for (let i=0; i<num-1; i++) {
+            state.push(0);
+        }
+        while (true) {
+            let tmp = state.slice(0);
+            let subsum = 0;
+            for (let x of tmp) {
+                subsum += x;
+            }
+            tmp.push(sum - subsum);
+            result.push(tmp);
+            if (this._updateState(state, sum)) {
+                return result;
+            }
+        }
+    }
+
     deriveGrammar(sourceCodeString, parseTree, csvInputArrayOfHashes = []) {
         let parser = parseTree[0];
         let tokens = this.unparse(parseTree);
         console.log('tokens:'+JSON.stringify(tokens));
-        this._deriveGrammar(parser, parseTree, csvInputArrayOfHashes);
+        this._deriveTokenizer(parser, parseTree, csvInputArrayOfHashes);
         for(let r of csvInputArrayOfHashes) {
             if (r.tokenizepatterns) {
                 if (r.tokenizepatterns.length > 0) {
@@ -567,13 +651,112 @@ class DRegExp {
                 delete r.tokenizepatterns;
             }
         }
-
-        csvInputArrayOfHashes = this.fixContextSensitive(csvInputArrayOfHashes);
-
-        csvInputArrayOfHashes = this.filterDups(csvInputArrayOfHashes);
-
         csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
-        return csvInputArrayOfHashes;
+
+        let parsePatterns = [];
+        this._deriveParsePatterns(parser, parseTree, parsePatterns);
+        console.log('parsePatterns:' + JSON.stringify(parsePatterns,null,4));
+
+        let conflictGroups = this._conflictGroups(parsePatterns);
+        console.log('conflictGroups:' + JSON.stringify(conflictGroups,null,4));
+
+        let num = 0;
+        for (let c of conflictGroups) {
+            for (let parsePatternId of c) {
+                num++;
+            }
+        }
+        num *= 2;
+        console.log('num: ' + num);
+        for (let sum=1; sum<2; sum++) {
+            let combos = this._getSumCombos(sum,num);
+            console.log('combos:' + JSON.stringify(combos) + ' ' + combos.length);
+            for (let c of combos) {
+                let newCsvInputArrayOfHashes = csvInputArrayOfHashes.slice(0);
+                let i = 0;
+                let parsePatternIds = [];
+                for (let cg of conflictGroups) {
+                    for (let parsePatternId of cg) {
+                        parsePatternIds.push(parsePatternId);
+                        let numLeft = c[i++];
+                        let numRight = c[i++];
+                        console.log('parsePatternId:' + parsePatternId + ' numLeft: ' + numLeft + ' numRight: ' + numRight);
+                        for (let ctx of parsePatterns[parsePatternId].contexts) {
+                            let left = ctx.left.slice(0,numLeft).reverse().join(' ');
+                            let right = ctx.right.slice(0,numRight).join(' ');
+                            let nodeType = parsePatterns[parsePatternId].nodeType;
+                            let parsePattern = '(' + parsePatterns[parsePatternId].parsePattern.join(' ') + ')';
+                            if (left.length > 0) {
+                                parsePattern = left + ' ' + parsePattern;
+                            }
+                            if (right.length > 0) {
+                                parsePattern = parsePattern + ' ' + right;
+                            }
+                            console.log('parsePattern:' + parsePattern);
+                            if (!newCsvInputArrayOfHashes.some(r => r.nodetype === nodeType && r.parsepattern === parsePattern)) {
+                                newCsvInputArrayOfHashes.push({
+                                    parser: parser,
+                                    nodetype: nodeType,
+                                    tokenizepattern: '',
+                                    parsepattern: parsePattern,
+                                    primitivetype: '',
+                                    nodegroup: '',
+                                    precedence: '',
+                                    subparser: ''
+                                });
+                            }
+                        }
+                    }
+                }
+                for (let parsePatternId=0; parsePatternId<parsePatterns.length; parsePatternId++) {
+                    if (parsePatternIds.includes(parsePatternId)) {
+                        continue;
+                    }
+                    newCsvInputArrayOfHashes.push({
+                        parser: parser,
+                        nodetype: parsePatterns[parsePatternId].nodeType,
+                        tokenizepattern: '',
+                        parsepattern: '(' + parsePatterns[parsePatternId].parsePattern.join(' ') + ')',
+                        primitivetype: '',
+                        nodegroup: '',
+                        precedence: '',
+                        subparser: ''
+                    });
+                }
+                console.log('newCsvInputArrayOfHashes:'+JSON.stringify(newCsvInputArrayOfHashes,null,4));
+                if (this.testDerivedGrammar(sourceCodeString, parseTree, newCsvInputArrayOfHashes)) {
+                    console.log('FOUND SOLUTION!');
+                    this.resetGrammarRules();
+                    this.loadGrammarRules(newCsvInputArrayOfHashes);
+                    return newCsvInputArrayOfHashes;
+                } else {
+                    console.log('No soltion, contine');
+                }
+            }
+        }
+        return null;
+    }
+
+    testDerivedGrammar(sourceCodeString, expectedParseTree, csvInputArrayOfHashes) {
+        let drxTest = new DRegExp();
+        drxTest.loadGrammarRules(csvInputArrayOfHashes);
+        let tokenNodes = drxTest.tokenize(sourceCodeString);
+        let options = {expectedParseTree: expectedParseTree};
+        let resultParseTree = drxTest.parse(tokenNodes.slice(0), options);
+        console.log('resultParseTree:' + JSON.stringify(resultParseTree,null,4));
+        let seen = [];
+        while(drxTest.errorParserGrammarRuleId != null) {
+            console.log('ValidParseSteps: ' + drxTest.validParseSteps);
+            let grammarSerialized = JSON.stringify(drxTest.parserGrammarRuleIdsByParserAndPrecedenceGroup);
+            if (seen.includes(grammarSerialized)) {
+                console.log('Loop detected, fixPrecedenceGroups resulted in previously seen state.');
+                break;
+            }
+            seen.push(grammarSerialized);
+            drxTest.fixPrecedenceGroups();
+            resultParseTree = drxTest.parse(tokenNodes.slice(0), options);
+        }
+        return drxTest.compareParseTrees(resultParseTree, expectedParseTree);
     }
 
     filterDups(csvInputArrayOfHashes) {
@@ -596,10 +779,10 @@ class DRegExp {
                     contexts[r.parser] = {};
                 }
                 if (!contexts[r.parser].hasOwnProperty(r.parsepattern)) {
-                    contexts[r.parser][r.parsepattern] = {leftnodetype: {}, rightnodetype: {}, resultNodeTypes: [], maxCount: 0, mostSelectiveContext: null};
+                    contexts[r.parser][r.parsepattern] = {leftcontext: {}, rightcontext: {}, resultNodeTypes: [], maxCount: 0, mostSelectiveContext: null};
                 }
                 console.log(JSON.stringify(r));
-                for(let context of ['leftnodetype','rightnodetype']) {
+                for(let context of ['leftcontext','rightcontext']) {
                     if (r[context]) {
                         if (!contexts[r.parser][r.parsepattern][context].hasOwnProperty(r[context])) {
                             contexts[r.parser][r.parsepattern][context][r[context]] = {};
@@ -647,14 +830,14 @@ class DRegExp {
             if (contexts[r.parser] && contexts[r.parser][r.parsepattern]) {
                 let mostSelectiveContext = contexts[r.parser][r.parsepattern].mostSelectiveContext;
                 if (r[mostSelectiveContext.contextSide] === mostSelectiveContext.contextNodeType && r.nodetype === mostSelectiveContext.resultNodeType) {
-                    if (mostSelectiveContext.contextSide === 'leftnodetype') {
-                        r.parsepattern = r.leftnodetype + ' ' + r.parsepattern;
+                    if (mostSelectiveContext.contextSide === 'leftcontext') {
+                        r.parsepattern = r.leftcontext + ' ' + r.parsepattern;
                         console.log('new left parsepattern: ' + r.parsepattern);
-                        delete r.leftnodetype;
-                    } else if (mostSelectiveContext.contextSide === 'rightnodetype') {
-                        r.parsepattern = r.parsepattern + ' ' + r.rightnodetype;
+                        delete r.leftcontext;
+                    } else if (mostSelectiveContext.contextSide === 'rightcontext') {
+                        r.parsepattern = r.parsepattern + ' ' + r.rightcontext;
                         console.log('new right parsepattern: ' + r.parsepattern);
-                        delete r.rightnodetype;
+                        delete r.rightcontext;
                     } else {
                         throw new Error('Unexpected contextSide: ' + mostSelectiveContext.contextSide);
                     }
@@ -665,7 +848,7 @@ class DRegExp {
         return this.fixContextSensitive(newCsvInputArrayOfHashes);
     }
 
-    _deriveGrammar(parser, parseTree, csvInputArrayOfHashes, leftNodeType = '', rightNodeType = '') {
+    _deriveTokenizer(parser, parseTree, csvInputArrayOfHashes) {
         let nodeType = parseTree[0];
         let tokenizePattern;
         let parsePattern;
@@ -675,18 +858,8 @@ class DRegExp {
             let parsePatternNodeTypes = [];
             for (let i=0; parseTree[1][i]; i++) {
                 let subTree = parseTree[1][i];
-                let subLeftNodeType = '';
-                let subRightNodeType = '';
-                parsePatternNodeTypes.push(subTree[0]);
-                if (parseTree[1][i - 1]) {
-                    subLeftNodeType = parseTree[1][i - 1][0];
-                }
-                if (parseTree[1][i + 1]) {
-                    subRightNodeType = parseTree[1][i + 1][0];
-                }
-                this._deriveGrammar(parser, subTree, csvInputArrayOfHashes, subLeftNodeType, subRightNodeType);
+                this._deriveTokenizer(parser, subTree, csvInputArrayOfHashes);
             }
-            parsePattern = '(' + parsePatternNodeTypes.join(' ') + ')';
         }
 
         let rule;
@@ -700,41 +873,72 @@ class DRegExp {
                         rule = r;
                     }
                 }
-            } else {
-                if (r.parsepattern.length > 0 && r.parsepattern === parsePattern && nodeType === r.nodetype && leftNodeType === r.leftnodetype && rightNodeType === r.rightnodetype) {
-//                    The return below is commented out because we need all occurrences, even if they are the same, in order for the fixContextSensitive() algo to work, as it counts parse patterns.
-//                    return;
-                }
             }
         }
 
         // Inject new rule at beginning if necessary
-        if (rule == undefined) {
-            rule = {
-                parser: parser,
-                nodetype: nodeType,
-                tokenizepatterns: [],
-                tokenizepattern: '',
-                parsepattern: '',
-                primitivetype: '',
-                nodegroup: '',
-                precedence: '',
-                subparser: '',
-                leftnodetype: '',
-                rightnodetype: ''
-            };
-            csvInputArrayOfHashes.push(rule);
-        }
-
         if (typeof(parseTree[1]) === 'string') {
+            if (rule == undefined) {
+                rule = {
+                    parser: parser,
+                    nodetype: nodeType,
+                    tokenizepatterns: [],
+                    tokenizepattern: '',
+                    parsepattern: '',
+                    primitivetype: '',
+                    nodegroup: '',
+                    precedence: '',
+                    subparser: ''
+                };
+                csvInputArrayOfHashes.push(rule);
+            }
             rule.tokenizepatterns.push(tokenizePattern);
-        } else {
-            rule.parsepattern = parsePattern;
-            rule.leftnodetype = leftNodeType;
-            rule.rightnodetype = rightNodeType;
         }
 
         return;
+    }
+
+    _deriveParsePatterns(parser, parseTree, parsePatterns, leftContexts = [], rightContexts = []) {
+        let nodeType = parseTree[0];
+        if (Array.isArray(parseTree[1])) {
+            let parsePatternNodeTypes = [];
+            for (let i=0; parseTree[1][i]; i++) {
+                let subTree = parseTree[1][i];
+                parsePatternNodeTypes.push(subTree[0]);
+                let subLeftContexts = [];
+                for (let j=i-1; parseTree[1][j]; j--) {
+                    subLeftContexts.push(parseTree[1][j][0]);
+                }
+                let subRightContexts = [];
+                for (let j=i+1; parseTree[1][j]; j++) {
+                    subRightContexts.push(parseTree[1][j][0]);
+                }
+                this._deriveParsePatterns(parser, subTree, parsePatterns, subLeftContexts, subRightContexts);
+            }
+            let match = false;
+            for (let p of parsePatterns) {
+                if (p.nodeType === nodeType && JSON.stringify(p.parsePattern) === JSON.stringify(parsePatternNodeTypes)) {
+                    let contextMatch = false;
+                    for (let c of p.contexts) {
+                        if (contextMatch === false && JSON.stringify(c.left) === JSON.stringify(leftContexts) && JSON.stringify(c.right) === JSON.stringify(rightContexts)) {
+                            contextMatch = true;
+                            c.counter++;
+                        }
+                    }
+                    if (contextMatch === false) {
+                        p.contexts.push({left: leftContexts, right: rightContexts, counter: 1});
+                    }
+                    match = true;
+                }
+            }
+            if (match === false) {
+                parsePatterns.push({
+                    nodeType: nodeType,
+                    parsePattern: parsePatternNodeTypes,
+                    contexts: [{left: leftContexts, right: rightContexts, counter: 1}]
+                });
+            }
+        }
     }
 
     compareAndFixTokenizer(sourceCodeString, expectedTokens, csvInputArrayOfHashes) {

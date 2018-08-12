@@ -1,7 +1,7 @@
 'use strict';
 
 var drxExpected = new DRegExp();
-var drxActual = new DRegExp();
+var drxDerived = new DRegExp();
 
 function updateTables() {
         let expectedData = [];
@@ -16,14 +16,14 @@ function updateTables() {
             colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
         });
 
-        let actualData = [];
+        let derivedData = [];
 
-        for (let rule of drxActual.exportGrammarRules()) {
-            actualData.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
+        for (let rule of drxDerived.exportGrammarRules()) {
+            derivedData.push([rule.parser, rule.nodetype, rule.tokenizepattern, rule.parsepattern, rule.primitivetype, rule.nodegroup, rule.precedence, rule.subparser]);
         }
 
-        $('#actualGrammar').jexcel({
-            data:actualData,
+        $('#derivedGrammar').jexcel({
+            data:derivedData,
             colWidths: [ 100, 100, 100, 300, 100, 100, 100, 100],
             colHeaders: [ 'parser', 'nodeType', 'tokenizePattern', 'parsePattern', 'primitiveType', 'nodeGroup', 'precedence', 'subParser' ]
         });
@@ -76,32 +76,18 @@ function parseAndDrawTree() {
 
         let parser = expectedParseTree[0];
         let csvInputArrayOfHashes = [];
-        csvInputArrayOfHashes = drxActual.deriveGrammar(inputString, expectedParseTree, csvInputArrayOfHashes);
+        csvInputArrayOfHashes = drxDerived.deriveGrammar(inputString, expectedParseTree, csvInputArrayOfHashes);
 
-        let actualTokenNodes = drxActual.tokenize(inputString);
-        let options = {expectedParseTree: expectedParseTree};
-
-        let actualParseTree = drxActual.parse(actualTokenNodes.slice(0), options);
-        let seen = [];
-        while(drxActual.errorParserGrammarRuleId != null) {
-            console.log('ValidParseSteps: ' + drxActual.validParseSteps);
-            let grammarSerialized = JSON.stringify(drxActual.parserGrammarRuleIdsByParserAndPrecedenceGroup);
-            if (seen.includes(grammarSerialized)) {
-                console.log('Loop detected, fixPrecedenceGroups resulted in previously seen state.');
-                break;
-            }
-            seen.push(grammarSerialized);
-            drxActual.fixPrecedenceGroups();
-            actualParseTree = drxActual.parse(actualTokenNodes.slice(0), options);
-        }
-        updateChart('#actualParseTree', actualParseTree);
+        let derivedTokenNodes = drxDerived.tokenize(inputString);
+        let derivedParseTree = drxDerived.parse(derivedTokenNodes.slice(0));
+        updateChart('#derivedParseTree', derivedParseTree);
 
         let debugInfo = [];
-        drxActual.compareParseTrees(actualParseTree, expectedParseTree, debugInfo);
+        drxDerived.compareParseTrees(derivedParseTree, expectedParseTree, debugInfo);
         document.getElementById('debugInfo').innerHTML
             = (debugInfo.length == 0 ? 'OK' : JSON.stringify(debugInfo))
-            + '<br/>' + drxActual.numNodes + ' nodes'
-            + '<br/>' + drxActual.maxNodes + ' max nodes';
+            + '<br/>' + drxDerived.numNodes + ' nodes'
+            + '<br/>' + drxDerived.maxNodes + ' max nodes';
 
         updateTables();
 
