@@ -6,6 +6,11 @@ class DRegExp {
         this.resetGrammarRules();
     }
 
+    throwError(msg) {
+        console.log('ERROR: ' + msg);
+        throw new Error(msg);
+    }
+
     resetGrammarRules() {
         this.mainParser = null;
 
@@ -52,7 +57,7 @@ class DRegExp {
             // Add the node type:
             let nodeType = this.validateName(grammarRule.nodetype);
             if (this.nodeGroups.hasOwnProperty(nodeType)) {
-                throw new Error('nodeType ' + nodeType + ' is already declared as a nodeGroup');
+                this.throwError('nodeType ' + nodeType + ' is already declared as a nodeGroup');
             }
             if (!this.nodeTypes.includes(nodeType)) {
                 this.nodeTypes.push(nodeType);
@@ -63,7 +68,7 @@ class DRegExp {
             if (grammarRule.nodegroup) {
                 let nodeGroup = this.validateName(grammarRule.nodegroup);
                 if (this.nodeTypes.includes(nodeGroup)) {
-                    throw new Error('nodeGroup ' + nodeGroup + ' is already declared as a nodeType');
+                    this.throwError('nodeGroup ' + nodeGroup + ' is already declared as a nodeType');
                 }
                 if (!this.nodeGroups.hasOwnProperty(nodeGroup)) {
                     this.nodeGroups[nodeGroup] = [];
@@ -78,15 +83,15 @@ class DRegExp {
                 let isPrimitiveType = grammarRule.primitivetype && grammarRule.primitivetype.length > 0;
 
                 if (!isTokenizerGrammarRule && !isParserGrammarRule) {
-                    throw new Error('A grammar rule must have tokenizer pattern or a parser pattern or both.');
+                    this.throwError('A grammar rule must have tokenizer pattern or a parser pattern or both.');
                 }
 
                 if (isTokenizerGrammarRule) {
                     if (this.parserGrammarRules.some(r => r.nodetype === nodeType)) {
-                        throw new Error('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
+                        this.throwError('nodeType ' + nodeType + ' was used both for a tokenizer grammar rule and a parser grammar rule.');
                     }
                     if (this.tokenizerGrammarRules.hasOwnProperty(nodeType)) {
-                        throw new Error('Duplicate nodeType ' + nodeType + ' among tokenizer grammar rules.');
+                        this.throwError('Duplicate nodeType ' + nodeType + ' among tokenizer grammar rules.');
                     }
                     this.tokenizerGrammarRules[nodeType] = grammarRule;
                 }
@@ -100,7 +105,7 @@ class DRegExp {
                 if (isPrimitiveType) {
                     if (this.nodeTypePrimitiveType.hasOwnProperty(nodeType)) {
                         if (this.nodeTypePrimitiveType[nodeType] !== grammarRule.primitivetype) {
-                            throw new Error('Different primitiveTypes for same nodeType ' + nodeType + ' among grammar rules.');
+                            this.throwError('Different primitiveTypes for same nodeType ' + nodeType + ' among grammar rules.');
                         }
                     } else {
                         this.nodeTypePrimitiveType[nodeType] = grammarRule.primitivetype;
@@ -131,7 +136,7 @@ class DRegExp {
             } else {
                 for (let p of this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]) {
                     if (p.precedence === parserGrammarRule.precedence) {
-                        throw new Error('precedenceGroup ' + parserGrammarRule.precedence + ' already declared');
+                        this.throwError('precedenceGroup ' + parserGrammarRule.precedence + ' already declared');
                     }
                 }
                 this.parserGrammarRuleIdsByParserAndPrecedenceGroup[parser]
@@ -166,7 +171,7 @@ class DRegExp {
                 this.tokenDefiningTokenizerNodeTypes[parser].push(nodeType);
                 
                 if (this.containsParserRules) {
-                    console.warn('unused nodeType: ' + nodeType);
+//                    console.log('unused nodeType: ' + nodeType);
                     this.tokenizerUnusedNodeTypes[parser].push(nodeType);
                 }
             }
@@ -228,7 +233,7 @@ class DRegExp {
 
     validateName(nodeType) {
         if (typeof(nodeType) != 'string' || !nodeType.match(/^[A-Za-z_]{2,}$/)) {
-            throw new Error('invalid nodeType: ' + nodeType);
+            this.throwError('invalid nodeType: ' + nodeType);
         }
         return nodeType;
     }
@@ -243,19 +248,19 @@ class DRegExp {
     _tokenize(inputString, options) {
         let parser = options.parser || this.mainParser;
         if (!this.tokenDefiningTokenizerNodeTypes.hasOwnProperty(parser)) {
-            throw new Error('no rules defined for parser: ' + parser);
+            this.throwError('no rules defined for parser: ' + parser);
         }
         let tokenizerNodeTypes = this.tokenDefiningTokenizerNodeTypes[parser];
         let re = this.tokenizeRegExp(parser);
         let rx = re.regexp;
-        console.log('regexp: ' + rx);
+//        console.log('regexp: ' + rx);
         let m;
         let lastIndex = 0;
         while (m = rx.exec(inputString)) {
             if (m.index > lastIndex) {
                 let invalidString = inputString.slice(lastIndex, m.index);
                 if (options.throwOnError) {
-                    throw new Error('unable to tokenize ' + (m.index - lastIndex) + ' chars at pos ' + lastIndex + ' : "' + invalidString + '"');
+                    this.throwError('unable to tokenize ' + (m.index - lastIndex) + ' chars at pos ' + lastIndex + ' : "' + invalidString + '"');
                 }
                 this.tokenNodes.push(['?', invalidString, {tokenId: this.tokenNodes.length}]);
             }
@@ -267,7 +272,7 @@ class DRegExp {
                 if (matchedStr == null) {
                     continue;
                 } else if (matched) {
-                    throw new Error('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
+                    this.throwError('multiple capture groups matched: ' + tokenizerNodeTypes[i]);
                 }
                 matched = true;
                 let subParser = this.tokenizerGrammarRules[nodeType].subparser;
@@ -281,7 +286,7 @@ class DRegExp {
         if (inputString.length > lastIndex) {
             let invalidString = inputString.slice(lastIndex, inputString.length);
             if (options.throwOnError) {
-                throw new Error('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
+                this.throwError('unable to tokenize at pos ' + lastIndex + ' : "' + invalidString + '"');
             }
             this.tokenNodes.push(['?', invalidString, {tokenId: this.tokenNodes.length}]);
         }
@@ -290,7 +295,7 @@ class DRegExp {
     parse(tokenNodes, options = {}) {
         let parser = options.parser || this.mainParser;
         // if (!this.parserGrammarRuleIdsByParserAndPrecedenceGroup.hasOwnProperty(parser)) {
-        //     throw new Error('no rules defined for parser: ' + parser);
+        //     this.throwError('no rules defined for parser: ' + parser);
         // }
         let nodeString = '';
         let nodeId = 0;
@@ -313,7 +318,7 @@ class DRegExp {
                     continue;
                 }
                 if (m.length != precedenceGroup.parserGrammarRuleIds.length + 1) {
-                    throw new Error('different number of capture groups than node types for given precedence');
+                    this.throwError('different number of capture groups than node types for given precedence');
                 }
                 let matched = false;
                 let matchedStr = m[0];
@@ -324,7 +329,7 @@ class DRegExp {
                     if (m[i+1] == null) {
                         continue;
                     } else if (matched) {
-                        throw new Error('multiple capture groups matched for precedence "' + precedenceGroup.precedence + '" : ' + precedenceGroup.nodeTypes[i]);
+                        this.throwError('multiple capture groups matched for precedence "' + precedenceGroup.precedence + '" : ' + precedenceGroup.nodeTypes[i]);
                     }
                     matched = true;
                     subNodeString = m[i+1];
@@ -332,7 +337,7 @@ class DRegExp {
                     nodeType = this.parserGrammarRules[parserGrammarRuleId].nodetype;
                 }
                 if (!matched) {
-                    throw new Error('no capture group matched: ' + precedenceGroup.precedence);
+                    this.throwError('no capture group matched: ' + precedenceGroup.precedence);
                 }
                 let newNodeId = nodeId++;
                 let subNodes = [];
@@ -342,7 +347,7 @@ class DRegExp {
                 let subRegexp = /([가-판])(\d+),/ug; // [가-판] is the 10000 unicode chars between this.firstNodeTypeCharCode=44032..54032
                 while (subNode = subRegexp.exec(subNodeString)) {
                     if (subNode.index > subLastIndex) {
-                        throw new Error('did not match immediately after previous match');
+                        this.throwError('did not match immediately after previous match');
                     }
                     subNodeTypes.push(this.decodeNodeType(subNode[1]));
                     let subNodeId = subNode[2];
@@ -350,7 +355,7 @@ class DRegExp {
                     subLastIndex = subRegexp.lastIndex;
                 }
                 if (subNodes.length == 0) {
-                    throw new Error('unable to parse: ' + subNodeString);
+                    this.throwError('unable to parse: ' + subNodeString);
                 }
                 let subParser = this.parserGrammarRules[parserGrammarRuleId].subparser;
                 if (subParser) {
@@ -361,7 +366,7 @@ class DRegExp {
                         if (this.parseTreeContainsSubParseTree(options.expectedParseTree, subParseTree)) {
                             this.validParseSteps++;
                         } else if (this.errorParserGrammarRuleId == null) {
-                            console.log('ERROR after validParseSteps ' + this.validParseSteps + ' parserGrammarRuleId ' + parserGrammarRuleId + ' ' + nodeType + ' <- ' + subNodeTypes.join(' '));
+//                            console.log('ERROR after validParseSteps ' + this.validParseSteps + ' parserGrammarRuleId ' + parserGrammarRuleId + ' ' + nodeType + ' <- ' + subNodeTypes.join(' '));
                             this.errorParserGrammarRuleId = parserGrammarRuleId;
                         }
                     }
@@ -381,13 +386,13 @@ class DRegExp {
         }
         if (nodeString.match(/^[가-판]\d+,$/u) == null) {
             if (options.throwOnError) {
-                throw new Error('unable to parse: ' + nodeString);
+                this.throwError('unable to parse: ' + nodeString);
             }
             let subNodes = [];
             while (nodeString.length > 0) {
                 let subNode = nodeString.match(/([가-판])(\d+),/u);
                 if (subNode == null) {
-                    throw new Error('unable to parse: ' + nodeString);
+                    this.throwError('unable to parse: ' + nodeString);
                 }
                 let subNodeType = this.decodeNodeType(subNode[1]);
                 let subNodeId = subNode[2];
@@ -402,7 +407,7 @@ class DRegExp {
 
     encodeNodeType(nodeType) {
         if (!this.nodeTypeIds.hasOwnProperty(nodeType)) {
-            throw new Error('no such nodeType: ' + nodeType);
+            this.throwError('no such nodeType: ' + nodeType);
         }
         return String.fromCharCode(this.firstNodeTypeCharCode + this.nodeTypeIds[nodeType]);
     }
@@ -410,7 +415,7 @@ class DRegExp {
     decodeNodeType(unicodeToken) {
         let nodeType = this.nodeTypes[unicodeToken.charCodeAt(0) - this.firstNodeTypeCharCode];
         if (!nodeType) {
-            throw new Error('invalid unicodeToken ' + unicodeToken);
+            this.throwError('invalid unicodeToken ' + unicodeToken);
         }
         return nodeType;
     }
@@ -425,15 +430,15 @@ class DRegExp {
 
     expandTokenizePattern(nodeType, visited = []) {
         if (visited.includes(nodeType)) {
-            throw new Error('cycle detected: ' + nodeType);
+            this.throwError('cycle detected: ' + nodeType);
         }
         visited.push(nodeType);
         if (!this.tokenizerGrammarRules[nodeType]) {
-            throw new Error('no grammarRule for nodeType: ' + nodeType);
+            this.throwError('no grammarRule for nodeType: ' + nodeType);
         }
         let tokenizePattern = this.tokenizerGrammarRules[nodeType].tokenizepattern;
         if (!tokenizePattern) {
-            throw new Error('no tokenizepattern for nodeType: ' + nodeType);
+            this.throwError('no tokenizepattern for nodeType: ' + nodeType);
         }
         let matchNodeTypes = tokenizePattern.match(/[A-Za-z_]{2,}/g) || [];
         for (let subNodeType of matchNodeTypes) {
@@ -518,7 +523,7 @@ class DRegExp {
         let backReferences = re.match(/(^|[^\\])(\\\\)*\\\d+/g) || [];
         let numBackReferences = backReferences.length;
         if (numCaptureGroups != numBackReferences) {
-            throw new Error('Number of capture groups in regexp (' + re + ') not equal to number of back references: ' + numCaptureGroups + ' != ' + numBackReferences);
+            this.throwError('Number of capture groups in regexp (' + re + ') not equal to number of back references: ' + numCaptureGroups + ' != ' + numBackReferences);
         }
         for (let backRef of backReferences) {
             let refNum = backRef.match(/\d+$/)[0];
@@ -566,6 +571,7 @@ class DRegExp {
         }
         for (let offset=0; offset < rmax.length-rmin.length+1; offset++) {
             if (JSON.stringify(rmax.slice(offset,offset+rmin.length)) === JSON.stringify(rmin)) {
+//                console.log('Conflict:' + JSON.stringify(rmin) + ' with ' + JSON.stringify(rmax));
                 return true;
             }
         }
@@ -573,15 +579,12 @@ class DRegExp {
     }
 
     _updateState(stateArray, num) {
-        console.log('stateArray:' + stateArray);
-        console.log('num:' + num);
         let sum = 0;
         let maxValues = [];
         for (let i = stateArray.length - 1; i >= 0; i--) {
             maxValues[i] = num - sum;
             sum = sum + stateArray[i];
         }
-        console.log('maxValues:' + maxValues);
         for (let i = 0; i < stateArray.length; i++) {
             if (stateArray[i] != maxValues[i]) {
                 stateArray[i]++;
@@ -604,14 +607,12 @@ class DRegExp {
                 for (let parsePatternId2 of g) {
                     if (this.isInConflict(parsePatterns[parsePatternId1].parsePattern, parsePatterns[parsePatternId2].parsePattern)) {
                         isConflict = true;
-                        console.log('isConflict === true, pushing parsePatternId1 ' + parsePatternId1);
                         g.push(parsePatternId1);
                         break group_loop;
                     }
                 }
             }
             if (isConflict === false) {
-                console.log('isConflict === false, new group ' + parsePatternId1);
                 ruleGroups.push([parsePatternId1]);
             }
         }
@@ -619,6 +620,9 @@ class DRegExp {
     }
 
     _getSumCombos(sum, num) {
+        if (num === 0) {
+            return [0];
+        }
         let result = [];
         let state = [];
         for (let i=0; i<num-1; i++) {
@@ -641,7 +645,7 @@ class DRegExp {
     deriveGrammar(sourceCodeString, parseTree, csvInputArrayOfHashes = []) {
         let parser = parseTree[0];
         let tokens = this.unparse(parseTree);
-        console.log('tokens:'+JSON.stringify(tokens));
+//        console.log('tokens:'+JSON.stringify(tokens));
         this._deriveTokenizer(parser, parseTree, csvInputArrayOfHashes);
         for(let r of csvInputArrayOfHashes) {
             if (r.tokenizepatterns) {
@@ -651,14 +655,34 @@ class DRegExp {
                 delete r.tokenizepatterns;
             }
         }
-        csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
 
         let parsePatterns = [];
         this._deriveParsePatterns(parser, parseTree, parsePatterns);
-        console.log('parsePatterns:' + JSON.stringify(parsePatterns,null,4));
+//        console.log('parsePatterns:' + JSON.stringify(parsePatterns,null,4));
+
+        for (let p of parsePatterns) {
+            csvInputArrayOfHashes.push({
+                parser: parser,
+                nodetype: p.nodeType,
+                tokenizepattern: '',
+                parsepattern: '(' + p.parsePattern.join(' ') + ')',
+                primitivetype: '',
+                nodegroup: '',
+                precedence: '',
+                subparser: ''
+            });
+        }
+        csvInputArrayOfHashes = this.compareAndFixTokenizer(sourceCodeString, tokens, csvInputArrayOfHashes);
+        let newCsvInputArrayOfHashes = [];
+        for (let p of csvInputArrayOfHashes) {
+            if (p.tokenizepattern.length > 0) {
+                newCsvInputArrayOfHashes.push(p);
+            }
+        }
+        csvInputArrayOfHashes = newCsvInputArrayOfHashes;
 
         let conflictGroups = this._conflictGroups(parsePatterns);
-        console.log('conflictGroups:' + JSON.stringify(conflictGroups,null,4));
+//        console.log('conflictGroups: ' + JSON.stringify(conflictGroups));
 
         let num = 0;
         for (let c of conflictGroups) {
@@ -667,12 +691,11 @@ class DRegExp {
             }
         }
         num *= 2;
-        console.log('num: ' + num);
-        for (let sum=1; sum<2; sum++) {
+        for (let sum=0; sum<10; sum++) {
+//            console.log('sum ' + sum);
             let combos = this._getSumCombos(sum,num);
-            console.log('combos:' + JSON.stringify(combos) + ' ' + combos.length);
             for (let c of combos) {
-                let newCsvInputArrayOfHashes = csvInputArrayOfHashes.slice(0);
+                let newCsvInputArrayOfHashes = JSON.parse(JSON.stringify(csvInputArrayOfHashes));
                 let i = 0;
                 let parsePatternIds = [];
                 for (let cg of conflictGroups) {
@@ -680,7 +703,6 @@ class DRegExp {
                         parsePatternIds.push(parsePatternId);
                         let numLeft = c[i++];
                         let numRight = c[i++];
-                        console.log('parsePatternId:' + parsePatternId + ' numLeft: ' + numLeft + ' numRight: ' + numRight);
                         for (let ctx of parsePatterns[parsePatternId].contexts) {
                             let left = ctx.left.slice(0,numLeft).reverse().join(' ');
                             let right = ctx.right.slice(0,numRight).join(' ');
@@ -692,8 +714,10 @@ class DRegExp {
                             if (right.length > 0) {
                                 parsePattern = parsePattern + ' ' + right;
                             }
-                            console.log('parsePattern:' + parsePattern);
                             if (!newCsvInputArrayOfHashes.some(r => r.nodetype === nodeType && r.parsepattern === parsePattern)) {
+                                if (left.length > 0 || right.length > 0) {
+                                    console.log('Testing context: ' + nodeType + ' ::= ' + parsePattern);
+                                }
                                 newCsvInputArrayOfHashes.push({
                                     parser: parser,
                                     nodetype: nodeType,
@@ -723,14 +747,14 @@ class DRegExp {
                         subparser: ''
                     });
                 }
-                console.log('newCsvInputArrayOfHashes:'+JSON.stringify(newCsvInputArrayOfHashes,null,4));
-                if (this.testDerivedGrammar(sourceCodeString, parseTree, newCsvInputArrayOfHashes)) {
-                    console.log('FOUND SOLUTION!');
+                newCsvInputArrayOfHashes = this.testDerivedGrammar(sourceCodeString, parseTree, newCsvInputArrayOfHashes);
+                if (newCsvInputArrayOfHashes) {
+                    console.log('Solution found! Grammar produced identical parse tree!');
                     this.resetGrammarRules();
                     this.loadGrammarRules(newCsvInputArrayOfHashes);
                     return newCsvInputArrayOfHashes;
                 } else {
-                    console.log('No soltion, contine');
+//                    console.log('No solution, continue');
                 }
             }
         }
@@ -739,31 +763,35 @@ class DRegExp {
 
     testDerivedGrammar(sourceCodeString, expectedParseTree, csvInputArrayOfHashes) {
         let drxTest = new DRegExp();
+        drxTest.resetGrammarRules();
         drxTest.loadGrammarRules(csvInputArrayOfHashes);
         let tokenNodes = drxTest.tokenize(sourceCodeString);
         let options = {expectedParseTree: expectedParseTree};
         let resultParseTree = drxTest.parse(tokenNodes.slice(0), options);
-        console.log('resultParseTree:' + JSON.stringify(resultParseTree,null,4));
         let seen = [];
         while(drxTest.errorParserGrammarRuleId != null) {
-            console.log('ValidParseSteps: ' + drxTest.validParseSteps);
+//            console.log('ValidParseSteps: ' + drxTest.validParseSteps);
             let grammarSerialized = JSON.stringify(drxTest.parserGrammarRuleIdsByParserAndPrecedenceGroup);
             if (seen.includes(grammarSerialized)) {
-                console.log('Loop detected, fixPrecedenceGroups resulted in previously seen state.');
+//                console.log('Loop detected, fixPrecedenceGroups resulted in previously seen state.');
                 break;
             }
             seen.push(grammarSerialized);
             drxTest.fixPrecedenceGroups();
             resultParseTree = drxTest.parse(tokenNodes.slice(0), options);
         }
-        return drxTest.compareParseTrees(resultParseTree, expectedParseTree);
+        if (drxTest.compareParseTrees(resultParseTree, expectedParseTree)) {
+            return drxTest.exportGrammarRules();
+        } else {
+            return null;
+        }
     }
 
     filterDups(csvInputArrayOfHashes) {
         let newCsvInputArrayOfHashes = [];
         for(let r1 of csvInputArrayOfHashes) {
             if (newCsvInputArrayOfHashes.some(r2 => r2.parser === r1.parser && r2.tokenizepattern === r1.tokenizepattern && r2.parsepattern === r1.parsepattern && r2.nodetype === r1.nodetype)) {
-                console.log('Skipping dup rule: ' + JSON.stringify(r1));
+//                console.log('Skipping dup rule: ' + JSON.stringify(r1));
                 continue;
             }
             newCsvInputArrayOfHashes.push(r1);
@@ -781,7 +809,6 @@ class DRegExp {
                 if (!contexts[r.parser].hasOwnProperty(r.parsepattern)) {
                     contexts[r.parser][r.parsepattern] = {leftcontext: {}, rightcontext: {}, resultNodeTypes: [], maxCount: 0, mostSelectiveContext: null};
                 }
-                console.log(JSON.stringify(r));
                 for(let context of ['leftcontext','rightcontext']) {
                     if (r[context]) {
                         if (!contexts[r.parser][r.parsepattern][context].hasOwnProperty(r[context])) {
@@ -821,7 +848,6 @@ class DRegExp {
                 }
             }
         }
-        console.log('contexts:' + JSON.stringify(contexts,null,4));
         if (!isAmbiguous) {
             return csvInputArrayOfHashes;
         }
@@ -832,14 +858,14 @@ class DRegExp {
                 if (r[mostSelectiveContext.contextSide] === mostSelectiveContext.contextNodeType && r.nodetype === mostSelectiveContext.resultNodeType) {
                     if (mostSelectiveContext.contextSide === 'leftcontext') {
                         r.parsepattern = r.leftcontext + ' ' + r.parsepattern;
-                        console.log('new left parsepattern: ' + r.parsepattern);
+//                        console.log('new left parsepattern: ' + r.parsepattern);
                         delete r.leftcontext;
                     } else if (mostSelectiveContext.contextSide === 'rightcontext') {
                         r.parsepattern = r.parsepattern + ' ' + r.rightcontext;
-                        console.log('new right parsepattern: ' + r.parsepattern);
+//                        console.log('new right parsepattern: ' + r.parsepattern);
                         delete r.rightcontext;
                     } else {
-                        throw new Error('Unexpected contextSide: ' + mostSelectiveContext.contextSide);
+                        this.throwError('Unexpected contextSide: ' + mostSelectiveContext.contextSide);
                     }
                 }
             }
@@ -947,18 +973,20 @@ class DRegExp {
         let resultTokens = this.tokenize(sourceCodeString);
         let isEqual = resultTokens.length == expectedTokens.length;
         let i;
+//        console.log('resultTokens:' + JSON.stringify(resultTokens,null,4));
+//        console.log('expectedTokens:' + JSON.stringify(expectedTokens,null,4));
         for (i = 0; resultTokens[i] && expectedTokens[i]; i++) {
             if (resultTokens[i][0] != expectedTokens[i][0]) {
-                console.log('resultTokens[i][0] != expectedTokens[i][0]: ' + i + ' ' + resultTokens[i][0] + ' ' + expectedTokens[i][0]);
+//                console.log('resultTokens[i][0] != expectedTokens[i][0]: ' + i + ' ' + resultTokens[i][0] + ' ' + expectedTokens[i][0]);
                 isEqual = false;
                 break;
             }
             if (resultTokens[i][1] != expectedTokens[i][1]) {
-                throw new Error('nodeType ' + resultTokens[i][0] + ' is correct but literal differs: "' + resultTokens[i][1] + '" vs "' + expectedTokens[i][1] + '"');
+                this.throwError('nodeType ' + resultTokens[i][0] + ' is correct but literal differs: "' + resultTokens[i][1] + '" vs "' + expectedTokens[i][1] + '"');
             }
         }
         if (isEqual) {
-            console.log('OK csvInputArrayOfHashes');
+//            console.log('OK csvInputArrayOfHashes');
             return csvInputArrayOfHashes;
         }
         let resultToken;
@@ -971,10 +999,10 @@ class DRegExp {
             }
         }
         if (resultToken == undefined) {
-            throw new Error('dregexp nodeType ' + resultTokens[i][0] + ' not found in csvInputArrayOfHashes');
+            this.throwError('dregexp nodeType ' + resultTokens[i][0] + ' not found in csvInputArrayOfHashes');
         }
         if (expectedToken == undefined) {
-            throw new Error('expectedToken nodeType ' + expectedTokens[i][0] + ' not found in csvInputArrayOfHashes');
+            this.throwError('expectedToken nodeType ' + expectedTokens[i][0] + ' not found in csvInputArrayOfHashes');
         }
         let newCsvInputArrayOfHashes = [];
         for(let r of csvInputArrayOfHashes) {
@@ -1027,7 +1055,7 @@ class DRegExp {
             debugInfo.push('parseTree2 is string, parseTree1 is array');
             return false;
         } else {
-            throw new Error('ERROR Unexpected: parseTree1: ' + JSON.stringify(parseTree1) + ' parseTree2: ' + JSON.stringify(parseTree2));
+            this.throwError('ERROR Unexpected: parseTree1: ' + JSON.stringify(parseTree1) + ' parseTree2: ' + JSON.stringify(parseTree2));
         }
     }
 
@@ -1067,6 +1095,8 @@ class DRegExp {
         if (this.errorParserGrammarRuleId == null) {
             return;
         }
+        let errorRule = this.parserGrammarRules[this.errorParserGrammarRuleId];
+        console.log('Lowering precedence of rule: ' + errorRule.nodetype + ' ::= ' + errorRule.parsepattern);
         let moveParserGrammarRuleId = null;
         let newParserGrammarRuleIdsByParserAndPrecedenceGroup = {};
         for (let parser in this.parserGrammarRuleIdsByParserAndPrecedenceGroup) {
@@ -1082,7 +1112,7 @@ class DRegExp {
                 for (let parserGrammarRuleId of parserGroup.parserGrammarRuleIds) {
                     if (parserGrammarRuleId === this.errorParserGrammarRuleId) {
                         if (moveParserGrammarRuleId != null) {
-                            throw new Error('Duplicate parserGrammarRuleId ' + parserGrammarRuleId.toString());
+                            this.throwError('Duplicate parserGrammarRuleId ' + parserGrammarRuleId.toString());
                         }
                         moveParserGrammarRuleId = parserGrammarRuleId;
                     } else {
@@ -1106,7 +1136,7 @@ class DRegExp {
             }
             newParserGrammarRuleIdsByParserAndPrecedenceGroup[parser] = newParserGroups;
         }
-        console.log(JSON.stringify(newParserGrammarRuleIdsByParserAndPrecedenceGroup));
+//        console.log(JSON.stringify(newParserGrammarRuleIdsByParserAndPrecedenceGroup));
         this.parserGrammarRuleIdsByParserAndPrecedenceGroup = newParserGrammarRuleIdsByParserAndPrecedenceGroup;
         this.errorParserGrammarRuleId = null;
     }

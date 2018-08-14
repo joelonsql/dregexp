@@ -66,7 +66,7 @@ function updateChart(containerId, parseTree) {
 function parseAndDrawTree() {
 
         let inputString = document.getElementById('inputString').value;
-        console.log('inputString: ' + inputString);
+//        console.log('inputString: ' + inputString);
 
         let expectedTokenNodes = drxExpected.tokenize(inputString);
 
